@@ -2,14 +2,10 @@
 #
 # SAMV71-XULT with Click sensor boards - sensors init
 #------------------------------------------------------------------------------
-# Click Board Support:
-#   - MIKROE-4044: 6DOF IMU 6 Click (ICM-20689) - SPI
-#   - MIKROE-6514: 6DOF IMU 27 Click (ICM-45686) - SPI
-#   - MIKROE-4231: Compass 4 Click (AK09915) - I2C
-#   - MIKROE-2293: Pressure 3 Click (DPS310) - I2C
-#   - MIKROE-3566: Pressure 5 Click (BMP388) - SPI
-#   - MIKROE-2935: GeoMagnetic Click (BMM150) - I2C
-#   - MIKROE-3775: 13DOF Click (BMI088 + BMM150) - I2C only
+# Active sensors:
+#   - MIKROE-6514: 6DOF IMU 27 Click (ICM-45686) - SPI0, CS=PD27
+#   - MIKROE-2935: GeoMagnetic Click (BMM150) - I2C0, addr 0x10
+#   - MIKROE-3566: Pressure 5 Click (BMP388) - I2C0
 #------------------------------------------------------------------------------
 
 # ADC - Battery voltage/current monitoring (AFEC0)

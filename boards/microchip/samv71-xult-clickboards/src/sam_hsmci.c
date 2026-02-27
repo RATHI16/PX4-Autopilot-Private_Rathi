@@ -270,20 +270,8 @@ int sam_hsmci_initialize(int slotno, int minor, gpio_pinset_t cdcfg,
 
 bool sam_cardinserted(int slotno)
 {
-  struct sam_hsmci_state_s *state;
-
-  /* Get the HSMI description */
-
-  state = sam_hsmci_state(slotno);
-  if (state == NULL)
-    {
-      ferr("ERROR: No state for slotno %d\n", slotno);
-      return false;
-    }
-
-  /* Return the state of the PIO pin */
-
-  return sam_cardinserted_internal(state);
+  /* No card detect pin on this board - always present */
+  return true;
 }
 
 /****************************************************************************

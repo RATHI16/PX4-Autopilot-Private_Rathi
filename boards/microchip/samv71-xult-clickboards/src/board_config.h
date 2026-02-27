@@ -173,10 +173,10 @@
  * PWM0 Module provides 4 independent channels for motor control.
  *
  * Motor Pin Mapping:
- *   Motor 1 (CH3): PC13 - GPIO_PWMC0_H3 (Peripheral B) - EXT2 Pin 4
+ *   Motor 1 (CH0): PB0  - GPIO_PWMC0_H0 (Peripheral A) - EXT1 Pin 13
  *   Motor 2 (CH1): PA2  - GPIO_PWMC0_H1 (Peripheral A) - EXT2 Pin 9
  *   Motor 3 (CH2): PC19 - GPIO_PWMC0_H2 (Peripheral B) - EXT2 Pin 7
- *   Motor 4 (CH0): PB0  - GPIO_PWMC0_H0 (Peripheral A) - EXT1 Pin 13
+ *   Motor 4 (CH3): PC13 - GPIO_PWMC0_H3 (Peripheral B) - EXT2 Pin 4
  *
  * CRITICAL: PA7 was originally used for Motor 1 but conflicts with XIN32
  *           (32.768 kHz slow crystal) when BOARD_HAVE_SLOWXTAL=1. Moved to PC13.
