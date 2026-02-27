@@ -89,13 +89,9 @@ static struct sam_hsmci_state_s g_hsmci0 =
 
 static bool sam_cardinserted_internal(struct sam_hsmci_state_s *state)
 {
-  bool inserted;
-
-  /* Get the state of the PIO pin */
-
-  inserted = sam_gpioread(state->cdcfg);
-  finfo("Slot %d inserted: %s\n", state->slotno, inserted ? "NO" : "YES");
-  return !inserted;
+  /* No card detect pin - SD card always present on this board */
+  printf("[hsmci] Card always present (no CD pin)\n");
+  return true;
 }
 
 /****************************************************************************
@@ -222,8 +218,8 @@ int sam_hsmci_initialize(int slotno, int minor, gpio_pinset_t cdcfg,
   printf("[hsmci] sdio_initialize OK\n");
 
   /* Get initial card state */
-  state->cd = sam_cardinserted_internal(state);
-  printf("[hsmci] Initial card state: %s\n", state->cd ? "PRESENT" : "ABSENT");
+state->cd = true;
+printf("[hsmci] No CD pin - assuming card always present\n");
 
   /* Set initial presence BEFORE mmcsd_slotinitialize so presence check succeeds */
   sdio_mediachange(state->hsmci, state->cd);
@@ -279,20 +275,8 @@ int sam_hsmci_initialize(int slotno, int minor, gpio_pinset_t cdcfg,
 
 bool sam_cardinserted(int slotno)
 {
-  struct sam_hsmci_state_s *state;
-
-  /* Get the HSMI description */
-
-  state = sam_hsmci_state(slotno);
-  if (state == NULL)
-    {
-      ferr("ERROR: No state for slotno %d\n", slotno);
-      return false;
-    }
-
-  /* Return the state of the PIO pin */
-
-  return sam_cardinserted_internal(state);
+  /* No card detect pin on this board - always present */
+  return true;
 }
 
 /****************************************************************************

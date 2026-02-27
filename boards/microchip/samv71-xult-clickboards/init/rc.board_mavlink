@@ -2,10 +2,31 @@
 #
 # MAVLink enabled on USB CDC/ACM
 # Note: MAV_0_CONFIG 101 set in rc.board_defaults
-
 # Create USB CDC/ACM device (/dev/ttyACM0) before rc.serial starts MAVLink.
 # Without this, rc.serial fails with "Device /dev/ttyACM0 does not exist"
 # because cdcacm_autostart runs AFTER rc.serial in the rcS boot sequence.
+
+# Start USB CDC/ACM
 sercon
+
+# Poll for /dev/ttyACM0 to appear - max 5 seconds
+i=0
+while [ $i -lt 5 ]; do
+    if [ -e /dev/ttyACM0 ]; then
+        echo "INFO: /dev/ttyACM0 ready after ${i}s"
+        break
+    fi
+    echo "INFO: Waiting for /dev/ttyACM0... attempt $((i+1))/5"
+    sleep 1
+    i=$((i+1))
+done
+
+# Final check
+if [ ! -e /dev/ttyACM0 ]; then
+    echo "WARN: /dev/ttyACM0 not ready after 5s - MAVLink may fail"
+    # Try sercon again
+    sercon
+    sleep 1
+fi
 
 echo "INFO: Board mavlink config - USB CDC/ACM enabled"

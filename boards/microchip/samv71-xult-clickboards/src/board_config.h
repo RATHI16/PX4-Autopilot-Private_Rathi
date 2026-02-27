@@ -75,9 +75,8 @@
  * EXT1 Pin 15 = CS  = PD25
  * EXT1 Pin 9  = IRQ = PD28 (directly connected to DRDY)
  */
-#define GPIO_SPI0_CS_ICM20689    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN25)
-#define GPIO_SPI0_DRDY_ICM20689  (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_INT_FALLING|GPIO_PORT_PIOD|GPIO_PIN28)
-#define GPIO_SPI0_DRDY_ICM20689_IRQ  SAM_IRQ_PD28
+#define GPIO_SPI0_CS_ICM45686   (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN27)
+
 
 /* BMP388 Pressure sensor on EXT2 header via mikroBUS adapter
  * EXT2 Pin 15 = CS  = PD27
@@ -177,10 +176,10 @@
  * PWM0 Module provides 4 independent channels for motor control.
  *
  * Motor Pin Mapping:
- *   Motor 1 (CH3): PC13 - GPIO_PWMC0_H3 (Peripheral B) - EXT2 Pin 4
+ *   Motor 1 (CH0): PB0  - GPIO_PWMC0_H0 (Peripheral A) - EXT1 Pin 13
  *   Motor 2 (CH1): PA2  - GPIO_PWMC0_H1 (Peripheral A) - EXT2 Pin 9
  *   Motor 3 (CH2): PC19 - GPIO_PWMC0_H2 (Peripheral B) - EXT2 Pin 7
- *   Motor 4 (CH0): PB0  - GPIO_PWMC0_H0 (Peripheral A) - EXT1 Pin 13
+ *   Motor 4 (CH3): PC13 - GPIO_PWMC0_H3 (Peripheral B) - EXT2 Pin 4
  *
  * CRITICAL: PA7 was originally used for Motor 1 but conflicts with XIN32
  *           (32.768 kHz slow crystal) when BOARD_HAVE_SLOWXTAL=1. Moved to PC13.
@@ -241,10 +240,13 @@
 #ifdef CONFIG_SAMV7_HSMCI0
 #  define HSMCI0_SLOTNO      0
 #  define HSMCI0_MINOR       0
-  /* Card Detect: PD18, active low, interrupt on both edges */
-#  define GPIO_HSMCI0_CD     (GPIO_INPUT | GPIO_CFG_DEFAULT | GPIO_CFG_DEGLITCH | \
-                              GPIO_INT_BOTHEDGES | GPIO_PORT_PIOD | GPIO_PIN18)
-#  define IRQ_HSMCI0_CD      SAM_IRQ_PD18
+  /* Card Detect: PD18 disabled — pin used for UART4 RC input.
+   * SD card assumed always present (init.c passes 0,0 for CD).
+   */
+  /* #define GPIO_HSMCI0_CD  (GPIO_INPUT | GPIO_CFG_DEFAULT | GPIO_CFG_DEGLITCH | \
+   *                          GPIO_INT_BOTHEDGES | GPIO_PORT_PIOD | GPIO_PIN18)
+   * #define IRQ_HSMCI0_CD   SAM_IRQ_PD18
+   */
 #endif
 
 /* USB ***********************************************************************************/
@@ -263,9 +265,7 @@
 
 #define PX4_GPIO_INIT_LIST { \
 		GPIO_nLED_BLUE,           \
-		GPIO_SPI0_CS_ICM20689,    \
-		GPIO_SPI0_DRDY_ICM20689,  \
-		GPIO_SPI0_CS_BMP388,      \
+		GPIO_SPI0_CS_ICM45686,    \
 		GPIO_MB1_RST,             \
 		GPIO_EXT1_RST,            \
 		GPIO_EXT2_RST,            \

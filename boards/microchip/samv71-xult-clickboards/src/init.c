@@ -129,7 +129,7 @@ static int samv71_sdcard_initialize(void)
 	printf("[sdcard] samv71_sdcard_initialize ENTRY\n");
 
 	/* Initialize HSMCI with board-specific glue */
-	ret = sam_hsmci_initialize(HSMCI0_SLOTNO, HSMCI0_MINOR, GPIO_HSMCI0_CD, IRQ_HSMCI0_CD);
+	ret = sam_hsmci_initialize(HSMCI0_SLOTNO, HSMCI0_MINOR, 0, 0);
 
 	if (ret < 0) {
 		printf("[sdcard] sam_hsmci_initialize FAILED: %d\n", ret);
