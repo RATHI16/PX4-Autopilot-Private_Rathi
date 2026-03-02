@@ -71,19 +71,15 @@
 #define BOARD_HAS_CONTROL_STATUS_LEDS      1
 #define BOARD_ARMED_STATE_LED  LED_BLUE
 
-/* ICM20689 on EXT1 header (not mikroBUS socket)
- * EXT1 Pin 15 = CS  = PD25
- * EXT1 Pin 9  = IRQ = PD28 (directly connected to DRDY)
- */
-#define GPIO_SPI0_CS_ICM20689    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN25)
-#define GPIO_SPI0_DRDY_ICM20689  (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_INT_FALLING|GPIO_PORT_PIOD|GPIO_PIN28)
-#define GPIO_SPI0_DRDY_ICM20689_IRQ  SAM_IRQ_PD28
-
-/* BMP388 Pressure sensor on EXT2 header via mikroBUS adapter
+/* ICM45686 on EXT2 header (replaces ICM20689 — PD25 freed for GPS UART2)
  * EXT2 Pin 15 = CS  = PD27
- * BMP388 does not use DRDY, uses polling mode
+ * EXT2 Pin 9  = IRQ = PD28 (DRDY)
  */
-#define GPIO_SPI0_CS_BMP388      (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN27)
+#define GPIO_SPI0_CS_ICM45686    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN27)
+#define GPIO_SPI0_DRDY_ICM45686  (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_INT_FALLING|GPIO_PORT_PIOD|GPIO_PIN28)
+#define GPIO_SPI0_DRDY_ICM45686_IRQ  SAM_IRQ_PD28
+
+/* BMP388 — SPI CS removed (PD27 now used by ICM45686). BMP388 runs via I2C. */
 
 /* mikroBUS Socket RST pins - Active LOW, start HIGH to release reset
  * Socket 1: PA19 (RST), PA0 (INT)
@@ -241,10 +237,9 @@
 #ifdef CONFIG_SAMV7_HSMCI0
 #  define HSMCI0_SLOTNO      0
 #  define HSMCI0_MINOR       0
-  /* Card Detect: PD18, active low, interrupt on both edges */
-#  define GPIO_HSMCI0_CD     (GPIO_INPUT | GPIO_CFG_DEFAULT | GPIO_CFG_DEGLITCH | \
-                              GPIO_INT_BOTHEDGES | GPIO_PORT_PIOD | GPIO_PIN18)
-#  define IRQ_HSMCI0_CD      SAM_IRQ_PD18
+  /* Card Detect DISABLED: PD18 conflicts with UART4 (RC SBUS input).
+   * Pass cdcfg=0, cdirq=0 to sam_hsmci_initialize() — card always present.
+   */
 #endif
 
 /* USB ***********************************************************************************/
@@ -257,15 +252,29 @@
 /* This board provides the board_on_reset interface */
 #define BOARD_HAS_ON_RESET 1
 
-/* Hardfault log path for crash dumps - stored in flash */
-#define HARDFAULT_ULOG_PATH "/fs/microsd"
-#define HARDFAULT_MAX_ULOG_FILE_LEN 80  /* Maximum length for ULog filename */
+/* Hardfault crash dump — PROGMEM (internal flash reserved sectors)
+ * SAMV7 internal flash: 2MB at 0x00400000, sectors are 128KB each.
+ * CONFIG_SAMV7_PROGMEM_NSECTORS=2 reserves the last 256KB (0x005C0000-0x005FFFFF)
+ * for crash dumps via the NuttX progmem driver.
+ */
+#define PROGMEM_DUMP_BASE         0x005C0000u  /* Start of reserved progmem region */
+#define PROGMEM_DUMP_SIZE         (256 * 1024) /* 2 sectors x 128KB = 256KB */
+#define PROGMEM_DUMP_ALIGNMENT    128          /* Header alignment (bytes) */
+#define PROGMEM_DUMP_HEADER_PAD   108          /* Padding: ALIGNMENT - sizeof(fixed fields) = 128 - 20 */
+#define PROGMEM_DUMP_ERASE_VALUE  0xFF         /* Erased flash byte value */
+#define PROGMEM_DUMP_STACK_SIZE   6656         /* Max bytes for user+interrupt stack capture */
+
+/* Reboot counter — the PROGMEM file scheme (files 0-3) has no dedicated
+ * reboot counter slot (unlike BBSRAM which has file 0 for that purpose).
+ * Store on SD card. If SD isn't mounted during early boot, the open fails
+ * gracefully and reboot-loop detection is skipped (crash dump still works).
+ */
+#define HARDFAULT_REBOOT_PATH     "/fs/microsd/.hardfault_reboot_count"
 
 #define PX4_GPIO_INIT_LIST { \
 		GPIO_nLED_BLUE,           \
-		GPIO_SPI0_CS_ICM20689,    \
-		GPIO_SPI0_DRDY_ICM20689,  \
-		GPIO_SPI0_CS_BMP388,      \
+		GPIO_SPI0_CS_ICM45686,    \
+		GPIO_SPI0_DRDY_ICM45686,  \
 		GPIO_MB1_RST,             \
 		GPIO_EXT1_RST,            \
 		GPIO_EXT2_RST,            \

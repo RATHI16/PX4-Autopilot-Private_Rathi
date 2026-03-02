@@ -34,12 +34,13 @@
 
 /* Linker script for ATSAMV71Q21B (Cortex-M7):
  *   - 2048 KB Flash at 0x00400000
+ *     Last 256 KB reserved for PROGMEM (CONFIG_SAMV7_PROGMEM_NSECTORS=2, 128KB each)
  *   - 384 KB SRAM at 0x20400000
  */
 
 MEMORY
 {
-  flash (rx)  : ORIGIN = 0x00400000, LENGTH = 2048K
+  flash (rx)  : ORIGIN = 0x00400000, LENGTH = 1792K
   sram (rwx)  : ORIGIN = 0x20400000, LENGTH = 320K
   nocache (rwx) : ORIGIN = 0x20450000, LENGTH = 64K
 }

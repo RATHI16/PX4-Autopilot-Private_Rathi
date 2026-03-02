@@ -33,7 +33,7 @@
 
 /**
  * @file board_reset.cpp
- * Implementation of SAMV7 based Board RESET API
+ * SAMV7 Board RESET API — uses GPBR0 for boot mode persistence across resets.
  */
 
 #include <px4_platform_common/px4_config.h>
@@ -41,30 +41,14 @@
 #include <systemlib/px4_macros.h>
 #include <errno.h>
 #include <nuttx/board.h>
+#include <nuttx/arch.h>
+#include "arm_internal.h"
 
 #ifdef CONFIG_BOARDCTL_RESET
 
-/* SAMV7 GPNVM (General Purpose NVM) bits for bootloader control
- * These can be used to store reset mode in non-volatile memory
- * For now, we use a simple RAM-based approach
- */
-static uint32_t reset_mode_value = 0;
-
-/****************************************************************************
- * Name: board_configure_reset
- *
- * Description:
- *   Configures the device that maintains the state shared by the
- *   application and boot loader.
- *
- * Input Parameters:
- *   mode  - The type of reset. See reset_mode_e
- *
- * Returned Value:
- *   0 for Success
- *   1 if invalid argument
- *
- ****************************************************************************/
+/* SAMV7 General Purpose Backup Register 0 — survives system reset */
+#define SAMV7_GPBR_BASE      0x400E1890
+#define SAMV7_BOOT_MODE_REG  (SAMV7_GPBR_BASE + 0)  /* GPBR0 */
 
 static const uint32_t modes[] = {
 	/*                                      to  tb   */
@@ -77,42 +61,14 @@ static const uint32_t modes[] = {
 
 int board_configure_reset(reset_mode_e mode, uint32_t arg)
 {
-	int rv = -1;
-
 	if (mode < arraySize(modes)) {
 		arg = mode == BOARD_RESET_MODE_CAN_BL ? arg & ~0xff : 0;
-
-		/* Store reset mode in RAM for now
-		 * TODO: Use GPBR (General Purpose Backup Registers) for persistence
-		 * across resets. SAMV7 has GPBR registers at 0x400E1890-0x400E18FC
-		 */
-		reset_mode_value = modes[mode] | arg;
-
-		rv = OK;
+		putreg32(modes[mode] | arg, SAMV7_BOOT_MODE_REG);
+		return OK;
 	}
 
-	return rv;
+	return -EINVAL;
 }
-
-/****************************************************************************
- * Name: board_reset
- *
- * Description:
- *   Reset board.  Support for this function is required by board-level
- *   logic if CONFIG_BOARDCTL_RESET is selected.
- *
- * Input Parameters:
- *   status - Status information provided with the reset event.  This
- *            meaning of this status information is board-specific.  If not
- *            used by a board, the value zero may be provided in calls to
- *            board_reset().
- *
- * Returned Value:
- *   If this function returns, then it was not possible to power-off the
- *   board due to some constraints.  The return value int this case is a
- *   board-specific reason for the failure to shutdown.
- *
- ****************************************************************************/
 
 int board_reset(int status)
 {
@@ -124,7 +80,6 @@ int board_reset(int status)
 	board_on_reset(status);
 #endif
 
-	/* Use NuttX system reset function */
 	up_systemreset();
 
 	return 0;

@@ -34,26 +34,13 @@
 /**
  * @file board_critmon.c
  *
- * SAMV7 critical section monitoring stub implementation
- */
-
-#include <px4_platform_common/px4_config.h>
-#include <nuttx/config.h>
-
-/* Stub implementation for SAMV7 board critical section monitoring.
- * This provides the required symbols for linking but does not implement
- * actual critical section monitoring.
+ * SAMV7 critical section monitoring.
  *
- * TODO: Implement proper critical section timing monitoring for SAMV7
- * when performance profiling is needed.
+ * NuttX's CONFIG_SCHED_CRITMONITOR uses up_perf_gettime() / up_perf_convert()
+ * from arm_perf.c (armv7-m CMN_CSRCS), which reads the DWT CYCCNT register.
+ * No board-specific implementation is needed — arm_perf.c handles everything.
+ *
+ * This file is intentionally empty. The previous board_critmon_init() and
+ * board_critmon_report() stubs were dead code (wrong function names — NuttX
+ * never calls them).
  */
-
-void board_critmon_init(void)
-{
-	/* Stub: No critical section monitoring initialization */
-}
-
-void board_critmon_report(void)
-{
-	/* Stub: No critical section monitoring reporting */
-}

@@ -53,13 +53,12 @@ static constexpr px4_spi_bus_device_t make_spidev(uint32_t drvtype, uint32_t cs_
 constexpr px4_spi_bus_t px4_spi_buses[SPI_BUS_MAX_BUS_ITEMS] = {
 	{
 		.devices = {
-			make_spidev(DRV_IMU_DEVTYPE_ICM20689, GPIO_SPI0_CS_ICM20689, GPIO_SPI0_DRDY_ICM20689),
-			make_spidev(DRV_BARO_DEVTYPE_BMP388, GPIO_SPI0_CS_BMP388),  // EXT2: CS=PD27
+			make_spidev(DRV_IMU_DEVTYPE_ICM45686, GPIO_SPI0_CS_ICM45686, GPIO_SPI0_DRDY_ICM45686),
 		},
 		.power_enable_gpio = 0,
 		.bus = static_cast<int8_t>(SPI::Bus::SPI0),
 		.is_external = false,
-		.requires_locking = false,
+		.requires_locking = true,
 	},
 };
 

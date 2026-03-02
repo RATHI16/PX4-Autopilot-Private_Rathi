@@ -108,9 +108,12 @@ __EXPORT void sam_usbsuspend(FAR struct usbdev_s *dev, bool resume)
 
 __EXPORT int board_read_VBUS_state(void)
 {
-	/* SAMV71-XULT: Always return 0 (PX4_OK) to indicate USB VBUS present
-	 * cdcacm_autostart checks: (board_read_VBUS_state() == PX4_OK)
-	 * TODO: Implement actual VBUS detection when GPIO is configured
+	/* SAMV71-XULT dev board: No dedicated VBUS sense GPIO available.
+	 * Always reports VBUS present. Correct for desk use (always USB-powered).
+	 *
+	 * Custom PCB: Wire a VBUS sense GPIO and implement actual detection:
+	 *   return px4_arch_gpioread(GPIO_OTGFS_VBUS) ? 0 : 1;
+	 * Also define BOARD_VBUS_SENSE_GPIO in board_config.h.
 	 */
-	return 0;  /* 0 = PX4_OK = VBUS present */
+	return 0;
 }

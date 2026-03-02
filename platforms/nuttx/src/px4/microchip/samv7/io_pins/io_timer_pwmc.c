@@ -387,10 +387,7 @@ int io_timer_channel_init(unsigned channel, io_timer_channel_mode_t mode,
 		/* Set period (CPRD register) - use direct register while channel disabled */
 		pwm_ch_putreg(ch_base, PWM_CPRD_OFFSET, g_timer_period[timer_idx]);
 
-		/* Set initial duty cycle to 0 (CDTY register)
-		 * Note: With CPOL=1, CDTY=0 means output stays high entire period
-		 * For motor safety, we want 0 duty initially
-		 */
+		/* CDTY=0 with CPOL=1 = 0% duty cycle (output LOW entire period) — safe for ESCs */
 		pwm_ch_putreg(ch_base, PWM_CDTY_OFFSET, 0);
 
 		/* Enable channel (write to ENA register) */
@@ -468,6 +465,56 @@ int io_timer_set_rate(unsigned timer, unsigned rate)
 		return -EINVAL;
 	}
 
+	/* rate == 0 means OneShot mode: set maximum period for longest pulse window.
+	 * With MCK/8 = 18.75MHz and CPRD = 65535, one-shot period = ~3.5ms.
+	 * Pulse width is controlled by CDTY, updated per-shot.
+	 */
+	if (rate == 0) {
+		/* OneShot: use MCK/8 prescaler with maximum period */
+		uint8_t new_cpre = 3;  /* MCK/8 */
+		uint32_t new_clock = PWM_CLK_MCK8;
+		uint32_t period = CPRD_MAX;
+
+		g_timer_clock[timer] = new_clock;
+		g_timer_cpre[timer] = new_cpre;
+		g_timer_period[timer] = period;
+
+		uint32_t base = get_pwm_base(timer);
+
+		/* Reallocate PWMOut channels to OneShot and update registers */
+		for (unsigned ch = 0; ch < MAX_TIMER_IO_CHANNELS; ch++) {
+			if (timer_io_channels[ch].timer_index == timer &&
+			    (g_channel_modes[ch] == IOTimerChanMode_PWMOut ||
+			     g_channel_modes[ch] == IOTimerChanMode_OneShot)) {
+
+				uint8_t pwm_ch = timer_io_channels[ch].timer_channel;
+				uint32_t ch_base = get_channel_reg_base(ch);
+
+				/* Disable, reconfigure, re-enable */
+				pwm_putreg(base + PWM_DIS_OFFSET, (1 << pwm_ch));
+
+				uint32_t sr = pwm_getreg(base + PWM_SR_OFFSET);
+				int timeout_ms = 50;
+
+				while ((sr & (1 << pwm_ch)) && timeout_ms > 0) {
+					up_udelay(1000);
+					sr = pwm_getreg(base + PWM_SR_OFFSET);
+					timeout_ms--;
+				}
+
+				uint32_t cmr = (new_cpre << PWM_CMR_CPRE_SHIFT) | PWM_CMR_CPOL;
+				pwm_ch_putreg(ch_base, PWM_CMR_OFFSET, cmr);
+				pwm_ch_putreg(ch_base, PWM_CPRD_OFFSET, period);
+
+				pwm_putreg(base + PWM_ENA_OFFSET, (1 << pwm_ch));
+
+				g_channel_modes[ch] = IOTimerChanMode_OneShot;
+			}
+		}
+
+		return OK;
+	}
+
 	if (rate < 50 || rate > 8000) {
 		return -EINVAL;
 	}
@@ -499,10 +546,17 @@ int io_timer_set_rate(unsigned timer, unsigned rate)
 
 	uint32_t base = get_pwm_base(timer);
 
-	/* Update all channels using this timer */
+	/* Update all channels using this timer (PWMOut and OneShot → PWMOut) */
 	for (unsigned ch = 0; ch < MAX_TIMER_IO_CHANNELS; ch++) {
 		if (timer_io_channels[ch].timer_index == timer &&
-		    g_channel_modes[ch] == IOTimerChanMode_PWMOut) {
+		    (g_channel_modes[ch] == IOTimerChanMode_PWMOut ||
+		     g_channel_modes[ch] == IOTimerChanMode_OneShot)) {
+
+			/* Switching from OneShot back to regular PWM */
+			if (g_channel_modes[ch] == IOTimerChanMode_OneShot) {
+				g_channel_modes[ch] = IOTimerChanMode_PWMOut;
+				prescaler_changed = true; /* Force full reconfiguration */
+			}
 
 			uint8_t pwm_ch = timer_io_channels[ch].timer_channel;
 			uint32_t ch_base = get_channel_reg_base(ch);
@@ -811,10 +865,14 @@ uint32_t io_timer_channel_get_gpio_output(unsigned channel)
 }
 
 /**
- * Set PWM rate for a timer (alias for io_timer_set_rate)
+ * Set PWM rate for a timer. Handles OneShot mode (rate=0) and regular PWM.
  */
 int io_timer_set_pwm_rate(unsigned timer, unsigned rate)
 {
+	if (timer >= MAX_IO_TIMERS || io_timers[timer].base == 0) {
+		return -EINVAL;
+	}
+
 	return io_timer_set_rate(timer, rate);
 }
 

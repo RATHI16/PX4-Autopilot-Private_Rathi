@@ -34,7 +34,8 @@
 /**
  * @file sam_gpiosetevent.c
  *
- * GPIO interrupt wrapper for SAMV7 - maps PX4's gpiosetevent API to SAMV7's gpioirq API
+ * GPIO interrupt wrapper for SAMV7 — works WITH NuttX's existing
+ * port-level ISR dispatchers (sam_gpioirq.c) via per-pin virtual IRQs.
  */
 
 #include <nuttx/config.h>
@@ -43,73 +44,89 @@
 #include <sam_gpio.h>
 #include <errno.h>
 
-/****************************************************************************
- * Name: sam_gpiosetevent
- *
- * Description:
- *   Configure GPIO interrupt for SAMV7.
- *   This function adapts PX4's generic gpiosetevent API to SAMV7's gpio interrupt model.
- *
- * Parameters:
- *   pinset      - GPIO pin configuration (port, pin, mode)
- *   risingedge  - Enable interrupt on rising edge
- *   fallingedge - Enable interrupt on falling edge
- *   event       - Enable interrupt on both edges (overrides rising/falling if true)
- *   handler     - Interrupt handler function
- *   arg         - Argument to pass to handler
- *
- * Returns:
- *   Zero (OK) on success; a negated errno value on failure.
- *
- ****************************************************************************/
+/**
+ * Convert a gpio_pinset_t to its NuttX virtual IRQ number.
+ * NuttX installs port-level handlers in sam_gpioirqinitialize() that
+ * read PIO_ISR and call irq_dispatch(SAM_IRQ_Px0 + pin) for each set bit.
+ * We attach our handler to that per-pin virtual IRQ.
+ */
+static int pinset_to_virq(gpio_pinset_t pinset)
+{
+	int pin  = (pinset & GPIO_PIN_MASK) >> GPIO_PIN_SHIFT;
+	int port = (pinset & GPIO_PORT_MASK) >> GPIO_PORT_SHIFT;
+
+	switch (port) {
+#ifdef CONFIG_SAMV7_GPIOA_IRQ
+	case 0: return SAM_IRQ_PA0 + pin;
+#endif
+#ifdef CONFIG_SAMV7_GPIOB_IRQ
+	case 1: return SAM_IRQ_PB0 + pin;
+#endif
+#ifdef CONFIG_SAMV7_GPIOC_IRQ
+	case 2: return SAM_IRQ_PC0 + pin;
+#endif
+#ifdef CONFIG_SAMV7_GPIOD_IRQ
+	case 3: return SAM_IRQ_PD0 + pin;
+#endif
+#ifdef CONFIG_SAMV7_GPIOE_IRQ
+	case 4: return SAM_IRQ_PE0 + pin;
+#endif
+	default: return -EINVAL;
+	}
+}
 
 int sam_gpiosetevent(gpio_pinset_t pinset, bool risingedge, bool fallingedge,
-                     bool event, xcpt_t handler, void *arg)
+		     bool event, xcpt_t handler, void *arg)
 {
 	gpio_pinset_t intcfg;
-	int ret;
 
-	/* Determine the interrupt mode based on the flags */
+	/* Determine interrupt edge mode */
 	if (event) {
-		/* Both edges */
 		intcfg = (pinset & ~GPIO_INT_MASK) | GPIO_INT_BOTHEDGES;
+
 	} else if (risingedge && fallingedge) {
-		/* Both edges */
 		intcfg = (pinset & ~GPIO_INT_MASK) | GPIO_INT_BOTHEDGES;
+
 	} else if (risingedge) {
-		/* Rising edge only */
 		intcfg = (pinset & ~GPIO_INT_MASK) | GPIO_INT_RISING;
+
 	} else if (fallingedge) {
-		/* Falling edge only */
 		intcfg = (pinset & ~GPIO_INT_MASK) | GPIO_INT_FALLING;
+
 	} else {
-		/* No interrupt */
 		return -EINVAL;
 	}
 
-	/* Configure the pin as an input with interrupt */
 	intcfg = (intcfg & ~GPIO_MODE_MASK) | GPIO_INPUT;
 
-	/* Configure the GPIO */
-	ret = sam_configgpio(intcfg);
+	/* Convert to virtual IRQ */
+	int virq = pinset_to_virq(pinset);
+
+	if (virq < 0) {
+		return virq;
+	}
+
+	/* Configure the GPIO pin for interrupt */
+	int ret = sam_configgpio(intcfg);
 
 	if (ret < 0) {
 		return ret;
 	}
 
-	/* Configure and enable the interrupt if handler is provided */
-	if (handler != NULL) {
-		/* Configure the GPIO interrupt - this sets up the PIO controller */
-		sam_gpioirq(intcfg);
+	sam_gpioirq(intcfg);
 
-		/* The actual IRQ attachment must be done at the port level
-		 * by the caller using irq_attach() with SAM_IRQ_PIOx
-		 * This function only configures the pin-level interrupt settings
-		 */
-		sam_gpioirqenable(intcfg);
+	if (handler) {
+		ret = irq_attach(virq, handler, arg);
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		sam_gpioirqenable(virq);
+
 	} else {
-		/* Disable the interrupt */
-		sam_gpioirqdisable(intcfg);
+		sam_gpioirqdisable(virq);
+		irq_attach(virq, NULL, NULL);
 	}
 
 	return OK;

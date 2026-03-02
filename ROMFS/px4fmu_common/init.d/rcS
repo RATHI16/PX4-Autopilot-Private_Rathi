@@ -47,9 +47,6 @@ set PARAM_DEFAULTS_VER 1
 #
 ver all
 
-# RE-ENABLED: MAVLink now works with USB CDC/ACM
-# mavlink stop-all >/dev/null 2>&1
-
 #
 # Try to mount the microSD card.
 #
@@ -71,22 +68,23 @@ then
 
 	if [ $STORAGE_AVAILABLE = no -o $SDCARD_FORMAT = yes ]
 	then
-		echo "WARN [init] SD card mount failed - SKIPPING auto-format for driver testing"
-		echo "WARN [init] Please format SD card externally and reboot"
-		# TEMPORARILY DISABLED for driver testing:
-		# if mkfatfs -F 32 /dev/mmcsd0
-		# then
-		#	echo "INFO [init] card formatted"
-		#	if mount -t vfat /dev/mmcsd0 /fs/microsd
-		#	then
-		#		set STORAGE_AVAILABLE yes
-		#		set STARTUP_TUNE 14 # tune 14 = SD_INIT
-		#	else
-		#		echo "ERROR [init] card mount failed"
-		#	fi
-		# else
-		#	echo "ERROR [init] format failed"
-		# fi
+		echo "INFO [init] formatting /dev/mmcsd0"
+		set STARTUP_TUNE 15 # tune 15 = SD_ERROR (overridden to SD_INIT if format + mount succeeds)
+
+		if mkfatfs -F 32 /dev/mmcsd0
+		then
+			echo "INFO [init] card formatted"
+
+			if mount -t vfat /dev/mmcsd0 /fs/microsd
+			then
+				set STORAGE_AVAILABLE yes
+				set STARTUP_TUNE 14 # tune 14 = SD_INIT
+			else
+				echo "ERROR [init] card mount failed"
+			fi
+		else
+			echo "ERROR [init] format failed"
+		fi
 	fi
 else
 	# Is there a device mounted for storage
@@ -273,17 +271,16 @@ else
 	# Waypoint storage.
 	# REBOOTWORK this needs to start in parallel.
 	#
-	# TEMPORARILY DISABLED - dataman hangs when no storage available
-	# if param compare -s SYS_DM_BACKEND 1
-	# then
-	# 	dataman start -r
-	# else
-	# 	if param compare SYS_DM_BACKEND 0
-	# 	then
-	# 		# dataman start default (with optional board-specific path)
-	# 		dataman start $DATAMAN_OPT
-	# 	fi
-	# fi
+	if param compare -s SYS_DM_BACKEND 1
+	then
+		dataman start -r
+	else
+		if param compare SYS_DM_BACKEND 0
+		then
+			# dataman start default
+			dataman start
+		fi
+	fi
 
 	#
 	# Start the socket communication send_event handler.
@@ -483,6 +480,19 @@ else
 	fi
 
 	#
+	# Optional UAVCAN/DroneCAN or Cyphal
+	#
+	if param greater -s UAVCAN_ENABLE 0
+	then
+		uavcan start
+	else
+		if param greater -s CYPHAL_ENABLE 0
+		then
+			cyphal start
+		fi
+	fi
+
+	#
 	# Configure vehicle type specific parameters.
 	# Note: rc.vehicle_setup is the entry point for all vehicle type specific setup.
 	. ${R}etc/init.d/rc.vehicle_setup
@@ -510,14 +520,15 @@ else
 	#
 	. ${R}etc/init.d/rc.serial
 
-	# RE-ENABLED: MAVLink now works with USB CDC/ACM
-	# mavlink stop-all >/dev/null 2>&1
+	if param greater -s ZENOH_ENABLE 0
+	then
+		zenoh start
+	fi
 
 	# Must be started after the serial config is read
 	rc_input start $RC_INPUT_ARGS
 
 	# Manages USB interface
-	# RE-ENABLED: USB CDC/ACM now configured properly
 	if param greater -s SYS_USB_AUTO -1
 	then
 		if ! cdcacm_autostart start
@@ -539,8 +550,8 @@ else
 
 	#
 	# Start the navigator.
-	# TEMPORARILY DISABLED - navigator requires dataman which isn't available
-	# navigator start
+	#
+	navigator start
 
 	#
 	# Start a thermal calibration if required.
@@ -582,8 +593,7 @@ else
 		px4flow start -X &
 	fi
 
-	# TEMPORARILY DISABLED - testing dataman_client trigger
-	# payload_deliverer start
+	payload_deliverer start
 
 	if param compare -s ICE_EN 1
 	then
@@ -621,6 +631,16 @@ else
 	unset RC_LOGGING
 
 	#
+	# Start the VTX services.
+	#
+	set RC_VTXTABLE ${R}etc/init.d/rc.vtxtable
+	if [ -f ${RC_VTXTABLE} ]
+	then
+		. ${RC_VTXTABLE}
+	fi
+	unset RC_VTXTABLE
+
+	#
 	# Set additional parameters and env variables for selected AUTOSTART.
 	#
 	if ! param compare SYS_AUTOSTART 0
@@ -635,27 +655,6 @@ else
 		sh $BOARD_BOOTLOADER_UPGRADE
 	fi
 	unset BOARD_BOOTLOADER_UPGRADE
-
-	#
-	# Check if UAVCAN is enabled, default to it for ESCs.
-	#
-	if param greater -s UAVCAN_ENABLE 0
-	then
-		# Start core UAVCAN module.
-		if ! uavcan start
-		then
-			tune_control play error
-		fi
-	else
-		if param greater -s CYPHAL_ENABLE 0
-		then
-			cyphal start
-		fi
-	fi
-	if param greater -s ZENOH_ENABLE 0
-	then
-		zenoh start
-	fi
 
 #
 # End of autostart.
@@ -684,5 +683,5 @@ unset VEHICLE_TYPE
 
 #
 # Boot is complete, inform MAVLink app(s) that the system is now fully up and running.
-# RE-ENABLED: MAVLink now running for USB CDC/ACM
+#
 mavlink boot_complete

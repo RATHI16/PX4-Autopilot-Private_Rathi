@@ -3,9 +3,5 @@
 # SAMV71-XULT board extras
 #------------------------------------------------------------------------------
 
-# Additional board-specific initialization
-
-# Navigator — started here (rc.board_extras) instead of common rcS because
-# the common rcS navigator line is disabled for this board's development.
-# rc.board_extras runs after the flight stack, which is the correct timing.
-navigator start
+# Additional board-specific initialization after flight stack starts.
+# Navigator is started by common rcS — do not duplicate here.

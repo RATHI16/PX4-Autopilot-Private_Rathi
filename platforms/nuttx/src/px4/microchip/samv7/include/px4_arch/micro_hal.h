@@ -86,10 +86,20 @@ __BEGIN_DECLS
 #define PX4_CPU_UUID_WORD32_FORMAT_SIZE         (PX4_CPU_UUID_WORD32_LENGTH-1+(2*PX4_CPU_UUID_BYTE_LENGTH)+1)
 #define PX4_CPU_MFGUID_FORMAT_SIZE              ((2*PX4_CPU_MFGUID_BYTE_LENGTH)+1)
 
-/* SAMV7 does not have battery-backed SRAM like STM32, but has GPBR (General Purpose Backup Registers)
- * For now, savepanic is not implemented. This can be added later using GPBR if needed.
+/* Hardfault crash dump storage via PROGMEM (internal flash reserved sectors).
+ * SAMV7 has no battery-backed SRAM, but the last 2 sectors (256KB) of internal
+ * flash are reserved by CONFIG_SAMV7_PROGMEM_NSECTORS=2 for crash dumps.
+ * The progmem_dump driver provides persistent storage across resets.
  */
-#define px4_savepanic(fileno, context, length)  (0)
+#if defined(CONFIG_BOARD_CRASHDUMP) && defined(CONFIG_SAMV7_PROGMEM)
+#  define HAS_PROGMEM 1
+#  include <px4_platform/progmem_dump.h>
+#  define px4_savepanic(fileno, context, length) progmem_dump_savepanic(fileno, context, length)
+#  define PX4_HF_GETDESC_IOCTL  PROGMEM_DUMP_GETDESC_IOCTL
+#else
+#  define px4_savepanic(fileno, context, length) (0)
+#  define PX4_HF_GETDESC_IOCTL  0
+#endif
 
 #define PX4_BUS_OFFSET       1                  /* PX4 uses 1-based, NuttX SAMV7 uses 0-based */
 #define px4_spibus_initialize(bus_num_1based)   sam_spibus_initialize((bus_num_1based) - 1)
@@ -110,11 +120,11 @@ int sam_gpiosetevent(gpio_pinset_t pinset, bool risingedge, bool fallingedge,
                      bool event, xcpt_t handler, void *arg);
 
 #define PX4_MAKE_GPIO_INPUT(gpio) (((gpio) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) | (GPIO_INPUT|GPIO_CFG_PULLUP))
-#define PX4_MAKE_GPIO_EXTI(gpio) (((gpio) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) | (GPIO_INT|GPIO_INPUT|GPIO_PULLUP))
+#define PX4_MAKE_GPIO_EXTI(gpio) (((gpio) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) | (GPIO_INT_BOTHEDGES|GPIO_INPUT|GPIO_CFG_PULLUP))
 #define PX4_MAKE_GPIO_OUTPUT_CLEAR(gpio) (((gpio) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) | (GPIO_OUTPUT|GPIO_OUTPUT_CLEAR))
 #define PX4_MAKE_GPIO_OUTPUT_SET(gpio) (((gpio) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) | (GPIO_OUTPUT|GPIO_OUTPUT_SET))
 
-#define PX4_GPIO_PIN_OFF(def) (((def) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) | (GPIO_INPUT|GPIO_FLOAT))
+#define PX4_GPIO_PIN_OFF(def) (((def) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) | (GPIO_INPUT|GPIO_CFG_DEFAULT))
 
 /* CAN bootloader usage - SAMV7 has MCAN but not yet configured
  * These definitions are placeholders for future CAN support

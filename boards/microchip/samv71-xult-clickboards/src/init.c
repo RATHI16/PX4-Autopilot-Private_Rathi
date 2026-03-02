@@ -126,43 +126,25 @@ static int samv71_sdcard_initialize(void)
 {
 	int ret;
 
-	printf("[sdcard] samv71_sdcard_initialize ENTRY\n");
-
-	/* Initialize HSMCI with board-specific glue */
-	ret = sam_hsmci_initialize(HSMCI0_SLOTNO, HSMCI0_MINOR, GPIO_HSMCI0_CD, IRQ_HSMCI0_CD);
+	/* Initialize HSMCI — card detect disabled (PD18 used by UART4/RC SBUS) */
+	ret = sam_hsmci_initialize(HSMCI0_SLOTNO, HSMCI0_MINOR, 0, 0);
 
 	if (ret < 0) {
-		printf("[sdcard] sam_hsmci_initialize FAILED: %d\n", ret);
+		syslog(LOG_ERR, "[sdcard] sam_hsmci_initialize failed: %d\n", ret);
 		return ret;
 	}
 
-	printf("[sdcard] sam_hsmci_initialize returned OK\n");
+	/* Wait for async card probe to complete (up to 500ms) */
+	struct stat buf;
+	int timeout_ms = 500;
 
-	/* Wait for card initialization to complete.
-	 * Card initialization happens asynchronously through callbacks after
-	 * sam_hsmci_initialize returns. We need to wait for this to complete
-	 * before rcS tries to mount the filesystem.
-	 */
-	printf("[sdcard] Waiting 1000ms for async card init...\n");
-	up_mdelay(1000);
-
-	printf("[sdcard] Wait complete, creating mount points...\n");
-
-	/* Create mount point directory for rcS */
-	(void)mkdir("/fs", 0777);
-	(void)mkdir("/fs/microsd", 0777);
-
-	/* Mount the SD card */
-	printf("[sdcard] Mounting /dev/mmcsd0 to /fs/microsd...\n");
-	ret = mount("/dev/mmcsd0", "/fs/microsd", "vfat", 0, NULL);
-	if (ret < 0) {
-		printf("[sdcard] Mount failed: %d\n", errno);
-	} else {
-		printf("[sdcard] Mount SUCCESS\n");
+	while (stat("/dev/mmcsd0", &buf) < 0 && timeout_ms > 0) {
+		up_mdelay(50);
+		timeout_ms -= 50;
 	}
 
-	printf("[sdcard] samv71_sdcard_initialize complete\n");
-	return OK;
+	/* Do NOT mount here — let rcS handle mounting so STORAGE_AVAILABLE is set correctly */
+	return ret;
 }
 #endif /* CONFIG_SAMV7_HSMCI0 */
 
@@ -276,6 +258,12 @@ sam_boardinitialize(void)
 {
 	board_on_reset(-1); /* Reset PWM first thing */
 
+	/* Enable DWT cycle counter for perf/critmon — must be early,
+	 * before any code that uses up_perf_gettime() (SCHED_CRITMONITOR).
+	 * BOARD_CPU_FREQUENCY (300 MHz) is the DWT CYCCNT clock source.
+	 */
+	up_perf_init((void *)(uintptr_t)BOARD_CPU_FREQUENCY);
+
 	/* Zero out the nocache region (as it is NOLOAD) */
 	uint32_t *dest;
 	for (dest = &_s_nocache; dest < &_e_nocache; ) {
@@ -318,32 +306,18 @@ sam_boardinitialize(void)
 
 __EXPORT int board_app_initialize(uintptr_t arg)
 {
-	/* Use printf for early debug - goes directly to console */
-	printf("[boot] SAMV71 board_app_initialize ENTRY\n");
-
-	/* Note: MPU nocache region is configured in sam_boardinitialize()
-	 * BEFORE the MPU is enabled and D-cache is turned on.
-	 */
-
 	px4_platform_init();
 
-	printf("[boot] px4_platform_init done\n");
-
-	/* IMPORTANT: Initialize DMA allocator BEFORE SD card!
-	 * The SD card async probe uses DMA buffers from the nocache region.
-	 */
-	printf("[boot] Initializing DMA allocator...\n");
+	/* Initialize DMA allocator BEFORE SD card — async probe uses DMA from nocache */
 	if (board_dma_alloc_init() < 0) {
-		printf("[boot] DMA alloc init FAILED!\n");
-	} else {
-		printf("[boot] DMA alloc init OK\n");
+		syslog(LOG_ERR, "[boot] DMA alloc init failed\n");
 	}
 
 #ifdef CONFIG_SAMV7_QSPI_SPI_MODE
 	int qspi_ret = board_qspi_flash_init();
 
 	if (qspi_ret < 0) {
-		printf("[boot] QSPI flash init failed: %d (continuing)\n", qspi_ret);
+		syslog(LOG_ERR, "[boot] QSPI flash init failed: %d\n", qspi_ret);
 
 	} else {
 		struct mtd_dev_s *qspi_mtd = board_get_qspi_mtd();
@@ -352,7 +326,7 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 			int part_ret = board_qspi_create_partitions(qspi_mtd);
 
 			if (part_ret < 0) {
-				printf("[boot] QSPI partition setup failed: %d (continuing)\n", part_ret);
+				syslog(LOG_ERR, "[boot] QSPI partition setup failed: %d\n", part_ret);
 			}
 		}
 	}
@@ -360,27 +334,23 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 #endif
 
 #ifdef CONFIG_SAMV7_HSMCI0
-	printf("[boot] Starting HSMCI (SD card)...\n");
-	int sd_ret = samv71_sdcard_initialize();
-	printf("[boot] samv71_sdcard_initialize returned: %d\n", sd_ret);
-	if (sd_ret < 0) {
-		printf("[boot] SD initialization failed (continuing)\n");
+	if (samv71_sdcard_initialize() < 0) {
+		syslog(LOG_ERR, "[boot] SD initialization failed\n");
 	}
-#else
-	printf("[boot] CONFIG_SAMV7_HSMCI0 NOT defined - SD card disabled!\n");
 #endif
 
 	/* Initialize I2C buses - must be after px4_platform_init */
 #ifdef CONFIG_SAMV7_TWIHS0
 	struct i2c_master_s *i2c0 = sam_i2cbus_initialize(0);
+
 	if (i2c0 == NULL) {
-		printf("[boot] ERROR: Failed to initialize I2C bus 0\n");
+		syslog(LOG_ERR, "[boot] Failed to initialize I2C bus 0\n");
+
 	} else {
 		int ret = i2c_register(i2c0, 0);
+
 		if (ret < 0) {
-			printf("[boot] ERROR: Failed to register I2C bus 0: %d\n", ret);
-		} else {
-			printf("[boot] I2C bus 0 ready (/dev/i2c0)\n");
+			syslog(LOG_ERR, "[boot] Failed to register I2C bus 0: %d\n", ret);
 		}
 	}
 #endif
