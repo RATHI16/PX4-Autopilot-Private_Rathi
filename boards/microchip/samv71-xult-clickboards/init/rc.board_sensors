@@ -12,6 +12,9 @@
 #   - MIKROE-3775: 13DOF Click (BMI088 + BMM150) - I2C only
 #------------------------------------------------------------------------------
 
+# ADC - Battery voltage/current monitoring (AFEC0)
+board_adc start
+
 #
 # SPI IMU Sensors (on SPI0)
 #

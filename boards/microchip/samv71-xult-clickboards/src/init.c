@@ -361,10 +361,16 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 	led_on(LED_GREEN); // Indicate Power
 	led_off(LED_BLUE);
 
+	/* HAS_PROGMEM disabled — progmem_dump_initialize() hangs on SAMV7.
+	 * board_hardfault_init() is a no-op without HAS_PROGMEM or HAS_BBSRAM,
+	 * but skip the call entirely to avoid confusion.
+	 */
+#ifdef HAS_PROGMEM
 	if (board_hardfault_init(2, true) != 0) {
 		led_on(LED_RED);
 		syslog(LOG_ERR, "[boot] Hardfault init FAILED\n");
 	}
+#endif
 
 	syslog(LOG_INFO, "[boot] Parameters on /fs/mtd_params (QSPI), backup on SD\n");
 

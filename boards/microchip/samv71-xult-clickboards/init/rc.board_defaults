@@ -70,6 +70,9 @@ param set-default PWM_MAIN_FAIL3 1000
 param set-default PWM_MAIN_FAIL4 1000
 param set-default PWM_MAIN_TIM0 400
 
+# Safety button (SW0 on PA9)
+safety_button start
+
 # Arming convenience for dev board
 param set-default COM_ARM_SDCARD 0
 param set-default COM_ARM_CHK_ESCS 0

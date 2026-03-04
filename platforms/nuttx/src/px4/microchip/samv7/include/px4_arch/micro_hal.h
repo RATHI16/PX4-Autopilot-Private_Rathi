@@ -89,9 +89,14 @@ __BEGIN_DECLS
 /* Hardfault crash dump storage via PROGMEM (internal flash reserved sectors).
  * SAMV7 has no battery-backed SRAM, but the last 2 sectors (256KB) of internal
  * flash are reserved by CONFIG_SAMV7_PROGMEM_NSECTORS=2 for crash dumps.
- * The progmem_dump driver provides persistent storage across resets.
+ *
+ * DISABLED: progmem_dump_initialize() hangs on SAMV7 because NuttX's
+ * up_progmem_write() (sam_progmem.c) is not __ramfunc__. Flash bus stalls
+ * during EEFC write operations cause the board to hang at boot.
+ * TODO: Fix NuttX sam_progmem.c to use __ramfunc__ for write/erase, then
+ * re-enable HAS_PROGMEM here.
  */
-#if defined(CONFIG_BOARD_CRASHDUMP) && defined(CONFIG_SAMV7_PROGMEM)
+#if 0 && defined(CONFIG_BOARD_CRASHDUMP) && defined(CONFIG_SAMV7_PROGMEM)
 #  define HAS_PROGMEM 1
 #  include <px4_platform/progmem_dump.h>
 #  define px4_savepanic(fileno, context, length) progmem_dump_savepanic(fileno, context, length)

@@ -264,6 +264,15 @@
 #define PROGMEM_DUMP_ERASE_VALUE  0xFF         /* Erased flash byte value */
 #define PROGMEM_DUMP_STACK_SIZE   6656         /* Max bytes for user+interrupt stack capture */
 
+/* When HAS_PROGMEM is enabled, hardfault_log.h defines HARDFAULT_ULOG_PATH
+ * as a progmem device path. When disabled, log_writer_file.cpp still needs
+ * this define (guarded by defined(px4_savepanic)). Provide SD fallback.
+ */
+#ifndef HARDFAULT_ULOG_PATH
+#define HARDFAULT_ULOG_PATH "/fs/microsd"
+#define HARDFAULT_MAX_ULOG_FILE_LEN 80
+#endif
+
 /* Reboot counter — the PROGMEM file scheme (files 0-3) has no dedicated
  * reboot counter slot (unlike BBSRAM which has file 0 for that purpose).
  * Store on SD card. If SD isn't mounted during early boot, the open fails
