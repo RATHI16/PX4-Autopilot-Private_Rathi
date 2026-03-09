@@ -1,7 +1,13 @@
 #!/bin/sh
-# board defaults
-# MAVLink enabled on USB CDC/ACM (ttyACM0)
-# Default airframe: Generic Quad (4001)
+# rc.board_defaults - SAMV71 Custom Board
+# Generated: 2026-03-03
+# Status: FLIGHT READY - Sensor cal removed for fresh recalibration
+# Board: microchip-samv71-xult-clickboards
+# Sensors: ICM45686 (SPI:1), BMM150 (I2C:1 0x10), BMP388 (I2C:1 0x76)
+# TX: TX16S FrSky SBUS
+# NOTE: Sensor calibration (CAL_ACC, CAL_GYRO, CAL_MAG, CAL_BARO,
+#       SENS_BOARD_X/Y/Z_OFF) intentionally removed.
+#       Recalibrate via QGC after flashing this file.
 
 # ── Airframe ──────────────────────────────────
 param set-default SYS_AUTOSTART 4001
@@ -9,6 +15,7 @@ param set-default SYS_AUTOCONFIG 0
 param set-default SYS_USB_AUTO 0
 param set-default SYS_HAS_MAG 1
 param set-default SYS_HAS_BARO 1
+param set-default SYS_HAS_GPS 0
 
 # ── MAVLink ───────────────────────────────────
 param set-default MAV_0_CONFIG 101
@@ -24,7 +31,7 @@ param set-default SDLOG_MODE 0
 param set-default SDLOG_PROFILE 1
 param set-default SDLOG_BACKEND 1
 
-# ── Sensors ───────────────────────────────────
+# ── Sensors (Basic only - no cal offsets) ─────
 param set-default SENS_EXT_I2C_PRB 0
 param set-default SENS_IMU_MODE 1
 param set-default SENS_MAG_MODE 1
@@ -32,52 +39,21 @@ param set-default SENS_MAG_RATE 15.0
 param set-default SENS_BARO_RATE 20.0
 
 # ── Board Orientation ─────────────────────────
+# ROT=2 = Yaw 90deg CW - confirmed physical board orientation
+# X/Y/Z offsets intentionally removed - auto-set after accel calibration
 param set-default SENS_BOARD_ROT 0
-param set-default SENS_BOARD_X_OFF -0.5218
-param set-default SENS_BOARD_Y_OFF -0.3750
-param set-default SENS_BOARD_Z_OFF 0.0000
-
-# ── Gyro Calibration (ICM45686 - SPI:1) ───────
-param set-default CAL_GYRO0_ID 3407882
-param set-default CAL_GYRO0_PRIO 50
-param set-default CAL_GYRO0_XOFF 0.0040
-param set-default CAL_GYRO0_YOFF -0.0025
-param set-default CAL_GYRO0_ZOFF -0.0026
-
-# ── Accel Calibration (ICM45686 - SPI:1) ──────
-param set-default CAL_ACC0_ID 3407882
-param set-default CAL_ACC0_PRIO 50
-param set-default CAL_ACC0_XOFF -0.0510
-param set-default CAL_ACC0_YOFF 0.0314
-param set-default CAL_ACC0_ZOFF -0.1176
-param set-default CAL_ACC0_XSCALE 1.0000
-param set-default CAL_ACC0_YSCALE 1.0000
-param set-default CAL_ACC0_ZSCALE 1.0000
-
-# ── Baro Calibration (BMP388 - I2C:1 0x76) ────
-param set-default CAL_BARO0_ID 6780425
-param set-default CAL_BARO0_PRIO 75
-param set-default CAL_BARO0_OFF 0.0000
-
-# ── Mag Calibration (BMM150 - I2C:1 0x10) ─────
-param set-default CAL_MAG0_ID 4395017
-param set-default CAL_MAG0_PRIO 75
-param set-default CAL_MAG0_ROT 0
-param set-default CAL_MAG0_XOFF 0.0285
-param set-default CAL_MAG0_YOFF -0.0750
-param set-default CAL_MAG0_ZOFF -0.1092
-param set-default CAL_MAG0_XSCALE 0.9436
-param set-default CAL_MAG0_YSCALE 0.9863
-param set-default CAL_MAG0_ZSCALE 1.0116
-param set-default CAL_MAG0_XODIAG -0.0670
-param set-default CAL_MAG0_YODIAG 0.0476
-param set-default CAL_MAG0_ZODIAG 0.0149
 
 # ── EKF2 ──────────────────────────────────────
 param set-default EKF2_HGT_REF 1
 param set-default EKF2_BARO_CTRL 1
-param set-default EKF2_MAG_TYPE 0
 param set-default EKF2_GPS_CTRL 0
+param set-default EKF2_MAG_TYPE 0
+param set-default EKF2_MAG_CHECK 0
+param set-default EKF2_DECL_TYPE 0
+param set-default EKF2_MAG_DECL 0.5
+param set-default EKF2_OF_CTRL 0
+param set-default EKF2_EN 1
+param set-default EKF2_IMU_CTRL 7
 
 # ── PWM ───────────────────────────────────────
 param set-default PWM_MAIN_FUNC1 101
@@ -118,7 +94,6 @@ param set-default RC_MAP_AUX4 12
 param set-default RC_INPUT_PROTO 2
 param set-default RC_PORT_CONFIG 300
 param set-default RC_CHAN_CNT 18
-param set-default RC_FAILS_THR 0
 param set-default RC_ARMSWITCH_TH 0.75
 param set-default RC_KILLSWITCH_TH 0.75
 param set-default RC_RETURN_TH 0.75
@@ -136,8 +111,8 @@ param set-default RC3_MIN 982
 param set-default RC3_MAX 2005
 param set-default RC3_TRIM 982
 param set-default RC3_REV 1
-param set-default RC4_MIN 982
-param set-default RC4_MAX 2005
+param set-default RC4_MIN 986
+param set-default RC4_MAX 2003
 param set-default RC4_TRIM 1494
 param set-default RC4_REV 1
 
@@ -147,14 +122,33 @@ param set-default COM_ARM_SDCARD 0
 param set-default COM_ARM_CHK_ESCS 0
 param set-default COM_CPU_MAX -1
 param set-default COM_ARM_MAG_ANG -1
-param set-default COM_ARM_MAG_STR 2
+param set-default COM_ARM_MAG_STR 0
 param set-default COM_ARM_HFLT_CHK 0
 param set-default COM_ARM_BAT_MIN -1
-param set-default COM_RC_LOSS_T 0.5
-param set-default COM_RC_IN_MODE 3
+param set-default COM_ARM_MIS_REQ 0
+param set-default COM_ARM_AUTH_REQ 0
+param set-default COM_MODE_ARM_CHK 0
+param set-default COM_RC_IN_MODE 0
 param set-default COM_DISARM_LAND 2.0
+param set-default COM_DISARM_MAN 1
+param set-default COM_DISARM_PRFLT 10.0
 param set-default COM_SPOOLUP_TIME 1.0
 param set-default COM_MOT_TEST_EN 1
+param set-default COM_RC_LOSS_T 2.0
+param set-default COM_DL_LOSS_T 10
+param set-default COM_OBC_LOSS_T 5.0
+param set-default COM_HLDL_LOSS_T 120
+param set-default COM_LOW_BAT_ACT 0
+param set-default COM_RC_OVERRIDE 1
+param set-default MAN_ARM_GESTURE 0
+
+# ── Flight Modes (All Stabilized for first flight) ──
+param set-default COM_FLTMODE1 8
+param set-default COM_FLTMODE2 8
+param set-default COM_FLTMODE3 8
+param set-default COM_FLTMODE4 8
+param set-default COM_FLTMODE5 8
+param set-default COM_FLTMODE6 8
 
 # ── Circuit Breakers ──────────────────────────
 param set-default CBRK_SUPPLY_CHK 894281
@@ -162,50 +156,58 @@ param set-default CBRK_USB_CHK 197848
 param set-default CBRK_IO_SAFETY 22027
 param set-default CBRK_FLIGHTTERM 121212
 
-# ── PID ───────────────────────────────────────
+# ── PID Tuning - Conservative for first flight ─
 param set-default MC_ROLLRATE_P 0.15
 param set-default MC_ROLLRATE_I 0.20
 param set-default MC_ROLLRATE_D 0.003
 param set-default MC_ROLLRATE_K 1.0
 param set-default MC_ROLLRATE_FF 0.0
 param set-default MC_ROLLRATE_MAX 220.0
+param set-default MC_RR_INT_LIM 0.30
+
 param set-default MC_PITCHRATE_P 0.15
 param set-default MC_PITCHRATE_I 0.20
 param set-default MC_PITCHRATE_D 0.003
 param set-default MC_PITCHRATE_K 1.0
 param set-default MC_PITCHRATE_FF 0.0
 param set-default MC_PITCHRATE_MAX 220.0
+param set-default MC_PR_INT_LIM 0.30
+
 param set-default MC_YAWRATE_P 0.20
 param set-default MC_YAWRATE_I 0.10
 param set-default MC_YAWRATE_D 0.0
 param set-default MC_YAWRATE_K 1.0
 param set-default MC_YAWRATE_MAX 200.0
+param set-default MC_YR_INT_LIM 0.30
+
 param set-default MC_ROLL_P 4.0
 param set-default MC_PITCH_P 4.0
 param set-default MC_YAW_P 2.8
 param set-default MC_YAW_WEIGHT 0.4
-param set-default MC_AIRMODE 0
 param set-default MC_AT_EN 0
 
-# ── Throttle ──────────────────────────────────
-param set-default MPC_THR_HOVER 0.50
+# ── Position Control ──────────────────────────
+param set-default MPC_XY_VEL_P_ACC 1.8
+param set-default MPC_XY_VEL_I_ACC 0.4
+param set-default MPC_XY_VEL_D_ACC 0.2
+param set-default MPC_THR_HOVER 0.5
 param set-default MPC_THR_MIN 0.12
 param set-default MPC_THR_MAX 1.0
 param set-default MPC_MANTHR_MIN 0.08
-param set-default MPC_LAND_SPEED 0.7
+param set-default MPC_LAND_SPEED 0.5
 param set-default MPC_TKO_SPEED 1.5
 param set-default MPC_MAN_TILT_MAX 35.0
-param set-default MPC_XY_VEL_MAX 12.0
 param set-default MPC_Z_VEL_MAX_UP 3.0
 param set-default MPC_Z_VEL_MAX_DN 1.5
 
 # ── Failsafe ──────────────────────────────────
 param set-default NAV_RCL_ACT 2
+param set-default NAV_DLL_ACT 0
+param set-default COM_RC_LOSS_T 2.0
 
-# ── GPS ───────────────────────────────────────
+# ── GPS (Disabled) ────────────────────────────
 param set-default GPS_1_CONFIG 201
 param set-default SER_GPS1_BAUD 38400
-param set-default SYS_HAS_GPS 1
 
 # Safety button (SW0 on PA9)
 safety_button start
