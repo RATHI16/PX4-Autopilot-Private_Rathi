@@ -82,7 +82,6 @@
  * EXT2 Pin 15 = CS  = PD27
  * BMP388 does not use DRDY, uses polling mode
  */
-#define GPIO_SPI0_CS_BMP388      (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN27)
 
 /* mikroBUS Socket RST pins - Active LOW, start HIGH to release reset
  * Socket 1: PA19 (RST), PA0 (INT)
