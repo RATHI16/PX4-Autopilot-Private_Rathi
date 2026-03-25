@@ -92,7 +92,6 @@
  */
 #define GPIO_MB1_RST     (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN19)
 /* GPIO_MB2_RST (PB0) REMOVED - used for PWMC Motor 4 */
-#define GPIO_EXT1_RST    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN5)
 #define GPIO_EXT2_RST    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN24)
 
 /* Primary storage defaults to SD card. Enable BOARD_HAS_FRAM_CLICK (and re-add
@@ -285,7 +284,6 @@
 		GPIO_SPI0_CS_ICM45686,    \
 		GPIO_SPI0_DRDY_ICM45686,  \
 		GPIO_MB1_RST,             \
-		GPIO_EXT1_RST,            \
 		GPIO_EXT2_RST,            \
 		GPIO_BTN_SAFETY,          \
 		GPIO_LED_SAFETY,          \
