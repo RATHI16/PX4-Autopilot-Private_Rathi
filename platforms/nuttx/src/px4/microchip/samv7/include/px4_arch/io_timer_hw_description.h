@@ -77,6 +77,10 @@ static inline constexpr io_timers_t initIOTimer(Timer::Timer timer)
 	case Timer::Timer5:
 		ret.base = SAM_TC345_BASE;
 		break;
+
+	case Timer::Timer6:
+		ret.base = SAM_TC678_BASE;
+		break;
 	}
 
 	ret.clock_register = 0;
@@ -112,6 +116,7 @@ static inline constexpr timer_io_channels_t initIOTimerChannel(const io_timers_t
 	case Timer::Timer3: ret.timer_index = 2; ret.timer_channel = 0; break;
 	case Timer::Timer4: ret.timer_index = 3; ret.timer_channel = 1; break;
 	case Timer::Timer5: ret.timer_index = 4; ret.timer_channel = 2; break;
+	case Timer::Timer6: ret.timer_index = 5; ret.timer_channel = 0; break;
 	}
 
 	ret.masks = 0;
@@ -200,6 +205,66 @@ static inline constexpr timer_io_channels_t initIOPWMChannel(const io_timers_t i
 	/* CDTY offset from channel register group base */
 	ret.ccr_offset = PWMC_CDTY_CH_OFFSET;
 
+	return ret;
+}
+
+/* Initialize a TC channel as an io_timers_t entry.
+ * base = per-channel address (timerBaseRegister already adds channel offset).
+ * clock_freq = MCK/8 = 18.75 MHz (TC waveform clock source).
+ */
+static inline constexpr io_timers_t initIOTCTimer(Timer::Timer timer)
+{
+	io_timers_t ret{};
+	ret.base           = timerBaseRegister(timer);
+	ret.clock_freq     = 150000000UL / 8;   /* MCK/8 = 18.75 MHz */
+	ret.clock_register = SAM_PMC_PCER0;
+
+	switch (timer) {
+	case Timer::Timer1: ret.clock_bit = (1u << SAM_PID_TC1); ret.vectorno = SAM_IRQ_TC1; break;
+	case Timer::Timer2: ret.clock_bit = (1u << SAM_PID_TC2); ret.vectorno = SAM_IRQ_TC2; break;
+	case Timer::Timer3: ret.clock_bit = (1u << SAM_PID_TC3); ret.vectorno = SAM_IRQ_TC3; break;
+	case Timer::Timer4: ret.clock_bit = (1u << SAM_PID_TC4); ret.vectorno = SAM_IRQ_TC4; break;
+	case Timer::Timer5: ret.clock_bit = (1u << SAM_PID_TC5); ret.vectorno = SAM_IRQ_TC5; break;
+	case Timer::Timer6:
+		ret.clock_register = SAM_PMC_PCER1;
+		ret.clock_bit = (1u << (SAM_PID_TC6 - 32));  /* PID 47 → PCER1 bit 15 */
+		ret.vectorno = SAM_IRQ_TC6;
+		break;
+	default: break;
+	}
+
+	return ret;
+}
+
+/* TIOA channel — duty via RA register (ccr_offset=0x14), Peripheral B */
+static inline constexpr timer_io_channels_t initIOTCChannelTIOA(
+	const io_timers_t io_timers_conf[MAX_IO_TIMERS],
+	unsigned timer_index, GPIO::GPIOPin pin)
+{
+	timer_io_channels_t ret{};
+	ret.gpio_out    = (4u << 21) | (0u << 16) | ((uint32_t)pin.port << 5) | (uint32_t)pin.pin;
+	ret.gpio_in     = 0;
+	ret.timer_index = (uint8_t)timer_index;
+	ret.timer_channel = 0;
+	ret.masks       = 0;
+	ret.ccr_offset  = 0x14;   /* TC_RA_OFFSET */
+	ret.is_tc       = 1;
+	return ret;
+}
+
+/* TIOB channel — duty via RB register (ccr_offset=0x18), Peripheral B */
+static inline constexpr timer_io_channels_t initIOTCChannelTIOB(
+	const io_timers_t io_timers_conf[MAX_IO_TIMERS],
+	unsigned timer_index, GPIO::GPIOPin pin)
+{
+	timer_io_channels_t ret{};
+	ret.gpio_out    = (4u << 21) | (0u << 16) | ((uint32_t)pin.port << 5) | (uint32_t)pin.pin;
+	ret.gpio_in     = 0;
+	ret.timer_index = (uint8_t)timer_index;
+	ret.timer_channel = 0;
+	ret.masks       = 0;
+	ret.ccr_offset  = 0x18;   /* TC_RB_OFFSET */
+	ret.is_tc       = 1;
 	return ret;
 }
 

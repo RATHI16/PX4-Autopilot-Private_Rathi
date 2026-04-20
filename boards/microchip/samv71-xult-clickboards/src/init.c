@@ -385,6 +385,7 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 	}
 #endif
 
+
 	drv_led_start();
 
 	led_off(LED_RED);

@@ -34,5 +34,5 @@
 #include <px4_arch/i2c_hw_description.h>
 
 constexpr px4_i2c_bus_t px4_i2c_buses[I2C_BUS_MAX_BUS_ITEMS] = {
-	initI2CBusExternal(1),  // PX4 bus 1 maps to NuttX TWIHS0 (via -1 conversion in micro_hal.h)
+	initI2CBusExternal(1),  // PX4 bus 1 = TWIHS0: PA3(SDA), PA4(SCL) - all external sensors
 };

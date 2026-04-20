@@ -6,6 +6,7 @@
 #   - MIKROE-6514: 6DOF IMU 27 Click (ICM-45686) - SPI0, CS=PD27
 #   - MIKROE-2935: GeoMagnetic Click (BMM150) - I2C0, addr 0x10
 #   - MIKROE-3566: Pressure 5 Click (BMP388) - I2C0
+#   - Holybro GPS (IST8310 mag) - I2C2/TWIHS2 (PD27/PD28), addr 0x0E
 #------------------------------------------------------------------------------
 
 # ICM-45686 IMU (accel + gyro) - SPI bus 1
@@ -13,6 +14,9 @@ icm45686 -s -b 1 start
 
 # BMM150 Magnetometer - I2C bus 1
 bmm150 -X -b 1 start
+
+# IST8310 Magnetometer (Holybro GPS internal) - I2C bus 3 = TWIHS2 (PD27/PD28), addr 0x0E
+ist8310 -X -b 1 -a 0x0E start
 
 # BMP388 Barometer - I2C bus 1
 bmp388 -X -b 1 start

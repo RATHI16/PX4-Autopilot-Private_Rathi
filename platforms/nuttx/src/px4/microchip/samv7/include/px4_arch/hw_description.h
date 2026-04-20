@@ -52,7 +52,8 @@ enum Timer {
 	Timer2 = 2,   /* TC0 CH2 - PA26 */
 	Timer3 = 3,   /* TC1 CH0 - PC23 */
 	Timer4 = 4,   /* TC1 CH1 - PC26 */
-	Timer5 = 5,   /* TC1 CH2 - PC29 (reserved for RC) */
+	Timer5 = 5,   /* TC1 CH2 - PC29 */
+	Timer6 = 6,   /* TC2 CH0 - PC5  */
 };
 
 enum Channel {
@@ -79,6 +80,7 @@ static inline constexpr uint32_t timerBaseRegister(Timer::Timer timer)
 	case Timer::Timer3: return SAM_TC345_BASE + (0 * TC_CHAN_OFFSET); /* TC1 CH0 */
 	case Timer::Timer4: return SAM_TC345_BASE + (1 * TC_CHAN_OFFSET); /* TC1 CH1 */
 	case Timer::Timer5: return SAM_TC345_BASE + (2 * TC_CHAN_OFFSET); /* TC1 CH2 */
+	case Timer::Timer6: return SAM_TC678_BASE + (0 * TC_CHAN_OFFSET); /* TC2 CH0 */
 	}
 
 	return 0;

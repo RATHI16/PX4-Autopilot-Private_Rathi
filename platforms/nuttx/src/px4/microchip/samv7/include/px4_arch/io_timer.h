@@ -117,6 +117,7 @@ typedef struct timer_io_channels_t {
 	uint8_t   timer_channel;  /* PWMC channel number (0-3) */
 	uint16_t  masks;          /* Channel bit in SR/ISR registers (1 << timer_channel) */
 	uint8_t   ccr_offset;     /* Offset to CDTY register from channel base */
+  uint8_t   is_tc;          /* 0 = PWMC, 1 = TC */
 } timer_io_channels_t;
 
 /* Channel handler callback — matches STM32 signature */

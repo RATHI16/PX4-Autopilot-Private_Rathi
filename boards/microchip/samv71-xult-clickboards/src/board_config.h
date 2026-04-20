@@ -75,7 +75,7 @@
  * EXT1 Pin 15 = CS  = PD25
  * EXT1 Pin 9  = IRQ = PD28 (directly connected to DRDY)
  */
-#define GPIO_SPI0_CS_ICM45686   (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN27)
+#define GPIO_SPI0_CS_ICM45686   (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN12)
 
 
 /* BMP388 Pressure sensor on EXT2 header via mikroBUS adapter
@@ -160,7 +160,7 @@
 /* I2C Buses ***********************************************************************************/
 
 /* SAMV71-XULT I2C Configuration:
- * I2C0 (TWIHS0): All sensors on mikroBUS sockets and Arduino headers
+ * I2C0 (TWIHS0): All external sensors including GPS magnetometer (IST8310)
  *   PA3 - TWD0 (SDA)
  *   PA4 - TWCK0 (SCL)
  */
@@ -170,35 +170,27 @@
 
 /* PWM Configuration ***********************************************************************************/
 
-/* SAMV71-XULT PWM Configuration using PWMC (PWM Controller):
- * PWM0 Module provides 4 independent channels for motor control.
+/* SAMV71-XULT PWM Configuration — 8 channels: 4 PWMC + 4 TC.
  *
- * Motor Pin Mapping:
- *   Motor 1 (CH0): PB0  - GPIO_PWMC0_H0 (Peripheral A) - EXT1 Pin 13
- *   Motor 2 (CH1): PA2  - GPIO_PWMC0_H1 (Peripheral A) - EXT2 Pin 9
- *   Motor 3 (CH2): PC19 - GPIO_PWMC0_H2 (Peripheral B) - EXT2 Pin 7
- *   Motor 4 (CH3): PC13 - GPIO_PWMC0_H3 (Peripheral B) - EXT2 Pin 4
+ * PWMC channels (PWM0, MCK/8 = 18.75MHz, 400Hz → CPRD=46875):
+ *   ch1: PB0  - PWMC0 CH0 (Peripheral A)
+ *   ch2: PA2  - PWMC0 CH1 (Peripheral A)
+ *   ch3: PC19 - PWMC0 CH2 (Peripheral B)
+ *   ch4: PC13 - PWMC0 CH3 (Peripheral B)
  *
- * CRITICAL: PA7 was originally used for Motor 1 but conflicts with XIN32
- *           (32.768 kHz slow crystal) when BOARD_HAVE_SLOWXTAL=1. Moved to PC13.
+ * TC channels (MCK/8 = 18.75MHz, 400Hz → RC=46875):
+ *   ch5: PA15 - TC0 CH1 TIOA (Timer1)
+ *   ch6: PC23 - TC1 CH0 TIOA (Timer3)
+ *   ch7: PC29 - TC1 CH2 TIOA (Timer5)
+ *   ch8: PC5  - TC2 CH0 TIOA (Timer6)
  *
- * Clock Configuration:
- *   MCK = 150MHz, CPRE = 3 (MCK/8 = 18.75MHz)
- *   For 400Hz PWM: CPRD = 46875
- *   LIMITATION: Minimum frequency ~286 Hz (16-bit CPRD overflow at lower rates)
- *
- * NOTE: PB0 (Motor 4) was previously GPIO_MB2_RST. Also conflicts with UART0_TXD.
- *       PA9 (Safety Button) conflicts with UART0_RXD when UART0 is enabled.
- *
- * Timer/Counter usage (separate from PWMC):
- *   TC0 CH0 (TC0) - Reserved for HRT (high-resolution timer)
- *   TC1 CH2 (TC5) - Reserved for RC Input capture: PC29 (TIOA5)
+ * NOTE: TC0 CH0 reserved for HRT. PC29 freed from RC Input for ch7 PWM.
  */
 
-#define DIRECT_PWM_OUTPUT_CHANNELS  4
+#define DIRECT_PWM_OUTPUT_CHANNELS  8
 
-/* RC Input capture - TC5 (TC1 CH2) - Reserved for future use */
-#define GPIO_RC_INPUT    (GPIO_PERIPHB | GPIO_CFG_DEFAULT | GPIO_PORT_PIOC | GPIO_PIN29)  /* TC5 TIOA - PC29 */
+/* PC29 (TC5 TIOA) is now used for Motor 3 PWM output - RC input disabled */
+/* #define GPIO_RC_INPUT    (GPIO_PERIPHB | GPIO_CFG_DEFAULT | GPIO_PORT_PIOC | GPIO_PIN29) */
 
 /* High-resolution timer */
 #define HRT_TIMER               0  /* use TC0 channel 0 for the HRT */
@@ -275,10 +267,14 @@
 // (ensure_initialized() with double-checked locking avoids static init issues)
 #define BOARD_ENABLE_CONSOLE_BUFFER
 
-/* Number of IO timers used for PWM (PWMC modules)
- * Using PWM0 only - provides 4 channels (CH0-CH3)
+/* Number of IO timers used for PWM (1 PWMC + 4 TC = 5 timers, 8 channels)
+ * index 0: PWM0 (PWMC)      — ch1..4: PB0, PA2, PC19, PC13
+ * index 1: TC0 CH1 (Timer1) — ch5: PA15
+ * index 2: TC1 CH0 (Timer3) — ch6: PC23
+ * index 3: TC1 CH2 (Timer5) — ch7: PC29
+ * index 4: TC2 CH0 (Timer6) — ch8: PC5
  */
-#define BOARD_NUM_IO_TIMERS 1
+#define BOARD_NUM_IO_TIMERS 5
 
 __BEGIN_DECLS
 

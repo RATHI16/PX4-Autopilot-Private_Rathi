@@ -29,20 +29,25 @@ def find_matching_brackets(brackets, s, verbose):
     raise Exception('Failed to find opening/closing brackets in {:}'.format(s))
 
 def extract_timer(line):
-    # Try format: initIOTimer(Timer::Timer5, DMA{DMA::Index1, DMA::Stream0, DMA::Channel6}),
-    search = re.search('Timer::([0-9a-zA-Z_]+)[,)]', line, re.IGNORECASE)
+    # SAMV7 PWMC format: initIOPWMTimer(PWM::PWM0),
+    search = re.search('initIOPWMTimer\(PWM::(PWM[0-9]+)\)', line, re.IGNORECASE)
     if search:
-        return search.group(1), 'generic'
+        return search.group(1), 'samv7'
+
+    # SAMV7 TC format: initIOTCTimer(Timer::Timer1),  — must be before generic Timer:: check
+    search = re.search('initIOTCTimer\(Timer::(Timer[0-9]+)\)', line, re.IGNORECASE)
+    if search:
+        return search.group(1), 'samv7'
 
     # NXP FlexPWM format format: initIOPWM(PWM::FlexPWM2),
     search = re.search('PWM::Flex([0-9a-zA-Z_]+)..PWM::Submodule([0-9])[,)]', line, re.IGNORECASE)
     if search:
         return (search.group(1) + '_' +  search.group(2)), 'imxrt'
 
-    # SAMV7 PWMC format: initIOPWMTimer(PWM::PWM0),
-    search = re.search('initIOPWMTimer\(PWM::(PWM[0-9]+)\)', line, re.IGNORECASE)
+    # Try format: initIOTimer(Timer::Timer5, DMA{DMA::Index1, DMA::Stream0, DMA::Channel6}),
+    search = re.search('Timer::([0-9a-zA-Z_]+)[,)]', line, re.IGNORECASE)
     if search:
-        return search.group(1), 'samv7'
+        return search.group(1), 'generic'
 
     return None, 'unknown'
 
@@ -64,6 +69,13 @@ def extract_timer_from_channel(line, timer_names):
         if pwm_module in timer_names:
             return str(timer_names.index(pwm_module))
         return pwm_module
+
+    # SAMV7 TC format: initIOTCChannelTIOA(io_timers, 1, {GPIO::PortA, GPIO::Pin15}),
+    # initIOTCChannelTIOB(io_timers, 1, {GPIO::PortA, GPIO::Pin16}),
+    search = re.search('initIOTCChannel(?:TIOA|TIOB)\(io_timers,\s*([0-9]+)', line, re.IGNORECASE)
+    if search:
+        # timer_index is a direct io_timers[] array index — return as string index
+        return search.group(1)
 
     return None
 
