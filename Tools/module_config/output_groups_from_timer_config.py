@@ -37,7 +37,7 @@ def extract_timer(line):
     # SAMV7 TC format: initIOTCTimer(Timer::Timer1),  — must be before generic Timer:: check
     search = re.search('initIOTCTimer\(Timer::(Timer[0-9]+)\)', line, re.IGNORECASE)
     if search:
-        return search.group(1), 'samv7'
+        return search.group(1), 'samv7_tc'
 
     # NXP FlexPWM format format: initIOPWM(PWM::FlexPWM2),
     search = re.search('PWM::Flex([0-9a-zA-Z_]+)..PWM::Submodule([0-9])[,)]', line, re.IGNORECASE)
@@ -118,7 +118,12 @@ def get_timer_groups(timer_config_file, verbose=False):
         elif timer_type == 'samv7':
             if verbose: print('samv7 PWMC timer found: {:}'.format(timer))
             timer_names.append(timer)
-            dshot_support[str(len(timers))] = False  # SAMV7 PWMC does not support DShot
+            dshot_support[str(len(timers))] = True   # SAMV7 PWMC supports DShot via XDMAC
+            timers.append(str(len(timers)))
+        elif timer_type == 'samv7_tc':
+            if verbose: print('samv7 TC timer found: {:}'.format(timer))
+            timer_names.append(timer)
+            dshot_support[str(len(timers))] = True   # SAMV7 TC supports DShot via CPCS ISR
             timers.append(str(len(timers)))
         elif timer:
             if verbose: print('found timer def: {:}'.format(timer))

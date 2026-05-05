@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2024 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2024-2025 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -10,8 +10,7 @@
 #    notice, this list of conditions and the following disclaimer.
 # 2. Redistributions in binary form must reproduce the above copyright
 #    notice, this list of conditions and the following disclaimer in
-#    the documentation and/or other materials provided with the
-#    distribution.
+#    the distribution.
 # 3. Neither the name PX4 nor the names of its contributors may be
 #    used to endorse or promote products derived from this software
 #    without specific prior written permission.
@@ -31,10 +30,16 @@
 #
 ############################################################################
 
-add_subdirectory(adc)
-add_subdirectory(hrt)
-add_subdirectory(version)
-add_subdirectory(board_reset)
-add_subdirectory(io_pins)
-add_subdirectory(board_critmon)
-add_subdirectory(dshot)
+if(CONFIG_DRIVERS_DSHOT)
+
+px4_add_library(arch_dshot
+	dshot.c
+)
+
+target_compile_options(arch_dshot
+	PRIVATE
+		${MAX_CUSTOM_OPT_LEVEL}
+		-Wno-cast-align
+)
+
+endif()

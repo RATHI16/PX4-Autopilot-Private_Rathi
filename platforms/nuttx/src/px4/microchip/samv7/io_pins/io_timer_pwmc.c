@@ -99,6 +99,13 @@
 #define PWM_ENA_OFFSET      0x004   /* Enable Register */
 #define PWM_DIS_OFFSET      0x008   /* Disable Register */
 #define PWM_SR_OFFSET       0x00C   /* Status Register */
+#define PWM_SCM_OFFSET      0x020   /* Sync Channels Mode Register */
+#define PWM_SCUC_OFFSET     0x028   /* Sync Channels Update Control Register */
+#define PWM_SCUP_OFFSET     0x02C   /* Sync Channels Update Period Register */
+#define PWM_IER2_OFFSET     0x034   /* Interrupt Enable Register 2 */
+#define PWM_IDR2_OFFSET     0x038   /* Interrupt Disable Register 2 */
+#define PWM_ISR2_OFFSET     0x040   /* Interrupt Status Register 2 */
+#define PWM_SCM_PTRM   (1u << 20)   // check header if defined
 
 /* Clock configuration:
  * MCK = 150MHz
@@ -140,6 +147,13 @@
 #define PWM_CMR_CPRE_MASK       (0xF << PWM_CMR_CPRE_SHIFT)
 #define PWM_CMR_CPOL            (1 << 9)    /* Channel polarity: high at start */
 
+#define PWM_CPRE_MCK2           1           /* MCK/2 = 75 MHz for DShot */
+#define PWM_DSHOT_SYNC_MASK     0x0f
+#define PWM_SCM_UPDM_MODE2      (2u << 16)
+#define PWM_SCUC_UPDULOCK       (1u << 0)
+#define PWM_IR2_WRDY            (1u << 0)
+#define PWM_IR2_UNRE            (1u << 3)
+
 
 /* TC waveform register offsets (aliases to NuttX names from hardware/sam_tc.h) */
 #define TC_CCR_OFF   SAM_TC_CCR_OFFSET   /* 0x0000 */
@@ -163,6 +177,8 @@ static io_timer_channel_mode_t g_timer_modes[MAX_IO_TIMERS]; /* Mode allocated f
 static uint32_t g_timer_period[MAX_IO_TIMERS];  /* CPRD value for each timer */
 static uint32_t g_timer_clock[MAX_IO_TIMERS];   /* Clock frequency for each timer */
 static uint8_t  g_timer_cpre[MAX_IO_TIMERS];    /* Prescaler (CPRE) for each timer */
+static uint32_t g_dshot_channel_mask[MAX_IO_TIMERS];
+static uint32_t g_dshot_reset_duty[MAX_IO_TIMERS];
 
 /* Channel handler callbacks (for capture/DShot IRQ dispatch — wired in Phase 1C) */
 static channel_handler_t g_channel_handler_callbacks[MAX_TIMER_IO_CHANNELS];
@@ -766,6 +782,7 @@ int io_timer_free_channel(unsigned channel)
 	}
 
 	uint8_t timer_idx = timer_io_channels[channel].timer_index;
+	io_timer_channel_mode_t old_mode = g_channel_modes[channel];
 
 	if (timer_io_channels[channel].is_tc) {
 		/* TC: set duty to 0, leave clock running — do NOT write PWMC DIS register */
@@ -779,6 +796,11 @@ int io_timer_free_channel(unsigned channel)
 	uint32_t base = get_pwm_base(timer_idx);
 
 	pwm_putreg(base + PWM_DIS_OFFSET, (1 << pwm_ch));
+
+	if (old_mode == IOTimerChanMode_Dshot || old_mode == IOTimerChanMode_DshotInverted) {
+		g_dshot_channel_mask[timer_idx] &= ~(1u << pwm_ch);
+	}
+
 	g_channel_modes[channel] = IOTimerChanMode_NotUsed;
 
 	return OK;
@@ -909,23 +931,247 @@ void io_timer_trigger(unsigned channels_mask)
 	(void)channels_mask;
 }
 
-/**
- * Enable/disable DMA request for DShot XDMAC transfer.
- * Stub for Phase 2 (DShot output).
- */
-void io_timer_update_dma_req(uint8_t timer, bool enable)
+void io_timer_set_dshot_channel_mask(uint8_t timer, uint32_t mask)
 {
-	UNUSED(timer);
-	UNUSED(enable);
+	if (timer < MAX_IO_TIMERS) {
+		g_dshot_channel_mask[timer] = mask & PWM_DSHOT_SYNC_MASK;
+	}
 }
 
-/**
- * Configure PWMC for DShot bit timing (CPRE, CPRD per protocol speed).
- * Stub for Phase 2 (DShot output).
- */
+void io_timer_dshot_force_low(uint8_t timer)
+{
+	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+		return;
+	}
+
+	uint32_t base = get_pwm_base(timer);
+
+	if (base == 0) {
+		return;
+	}
+
+	for (uint8_t pwm_ch = 0; pwm_ch < 4; pwm_ch++) {
+		if (g_dshot_channel_mask[timer] & (1u << pwm_ch)) {
+			uint32_t ch_base = base + PWM_CMR_OFFSET + (pwm_ch * PWM_CHAN_SPACING);
+			pwm_ch_putreg(ch_base, PWM_CDTYUPD_OFFSET, g_dshot_reset_duty[timer]);
+			pwm_ch_putreg(ch_base, PWM_CDTY_OFFSET, g_dshot_reset_duty[timer]);
+		}
+	}
+
+	pwm_putreg(base + PWM_SCUC_OFFSET, PWM_SCUC_UPDULOCK);
+}
+
+bool io_timer_dshot_check_unre(uint8_t timer)
+{
+	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+		return false;
+	}
+
+	uint32_t base = get_pwm_base(timer);
+
+	if (base == 0) {
+		return false;
+	}
+
+	return (pwm_getreg(base + PWM_ISR2_OFFSET) & PWM_IR2_UNRE) != 0;
+}
+
+void io_timer_dshot_debug_dump(uint8_t timer)
+{
+	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+		PX4_INFO("DShot debug timer %u invalid/TC", timer);
+		return;
+	}
+
+	uint32_t base = get_pwm_base(timer);
+
+	if (base == 0) {
+		PX4_INFO("DShot debug timer %u base=0", timer);
+		return;
+	}
+
+	PX4_INFO("PWMC%u base=0x%08lx SR=0x%08lx SCM=0x%08lx ISR2=0x%08lx mask=0x%lx",
+		 timer, (unsigned long)base,
+		 (unsigned long)pwm_getreg(base + PWM_SR_OFFSET),
+		 (unsigned long)pwm_getreg(base + PWM_SCM_OFFSET),
+		 (unsigned long)pwm_getreg(base + PWM_ISR2_OFFSET),
+		 (unsigned long)g_dshot_channel_mask[timer]);
+
+	for (uint8_t pwm_ch = 0; pwm_ch < 4; pwm_ch++) {
+		uint32_t ch_base = base + PWM_CMR_OFFSET + (pwm_ch * PWM_CHAN_SPACING);
+		PX4_INFO("  CH%u CMR=0x%08lx CDTY=%lu CPRD=%lu CCNT=%lu",
+			 pwm_ch,
+			 (unsigned long)pwm_ch_getreg(ch_base, PWM_CMR_OFFSET),
+			 (unsigned long)pwm_ch_getreg(ch_base, PWM_CDTY_OFFSET),
+			 (unsigned long)pwm_ch_getreg(ch_base, PWM_CPRD_OFFSET),
+			 (unsigned long)pwm_ch_getreg(ch_base, PWM_CCNT_OFFSET));
+	}
+}
+
+int io_timer_dshot_debug_pwm(uint8_t timer, unsigned rate_hz, unsigned duty_percent)
+{
+	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+		return -EINVAL;
+	}
+
+	if (rate_hz == 0 || duty_percent > 100) {
+		return -EINVAL;
+	}
+
+	uint32_t base = get_pwm_base(timer);
+
+	if (base == 0) {
+		return -EINVAL;
+	}
+
+	uint32_t clock = MCK_FREQUENCY / 64u;
+	uint32_t cprd = clock / rate_hz;
+
+	if (cprd == 0 || cprd > CPRD_MAX) {
+		return -ERANGE;
+	}
+
+	uint32_t duty = (cprd * duty_percent) / 100u;
+	uint32_t hw_mask = 0;
+
+	enable_pwm_clock(timer);
+	pwm_putreg(base + PWM_IDR2_OFFSET, PWM_IR2_WRDY);
+	pwm_putreg(base + PWM_DIS_OFFSET, PWM_DSHOT_SYNC_MASK);
+
+	for (unsigned output = 0; output < MAX_TIMER_IO_CHANNELS; output++) {
+		if (timer_io_channels[output].timer_index != timer || timer_io_channels[output].is_tc) {
+			continue;
+		}
+
+		uint8_t pwm_ch = timer_io_channels[output].timer_channel;
+
+		if (pwm_ch >= 4) {
+			continue;
+		}
+
+		sam_configgpio(timer_io_channels[output].gpio_out);
+		hw_mask |= (1u << pwm_ch);
+	}
+
+	if (hw_mask == 0) {
+		return -EINVAL;
+	}
+
+	for (uint8_t pwm_ch = 0; pwm_ch < 4; pwm_ch++) {
+		uint32_t ch_base = base + PWM_CMR_OFFSET + (pwm_ch * PWM_CHAN_SPACING);
+		pwm_ch_putreg(ch_base, PWM_CMR_OFFSET, PWM_CPRE_MCK64 | PWM_CMR_CPOL);
+		pwm_ch_putreg(ch_base, PWM_CPRD_OFFSET, cprd);
+		pwm_ch_putreg(ch_base, PWM_CDTY_OFFSET, duty);
+	}
+
+	/* Disable sync/DMA mode for this direct hardware test. */
+	pwm_putreg(base + PWM_SCM_OFFSET, 0);
+	pwm_putreg(base + PWM_ENA_OFFSET, hw_mask);
+
+	g_timer_cpre[timer] = PWM_CPRE_MCK64;
+	g_timer_clock[timer] = clock;
+	g_timer_period[timer] = cprd;
+
+	PX4_INFO("PWMC%u hwtest mask=0x%lx rate=%u duty=%u%% cprd=%lu cdty=%lu",
+		 timer, (unsigned long)hw_mask, rate_hz, duty_percent,
+		 (unsigned long)cprd, (unsigned long)duty);
+	io_timer_dshot_debug_dump(timer);
+
+	return OK;
+}
+
+void io_timer_update_dma_req(uint8_t timer, bool enable)
+{
+	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+		return;
+	}
+
+	uint32_t base = get_pwm_base(timer);
+
+	if (base == 0) {
+		return;
+	}
+
+	if (enable) {
+		(void)pwm_getreg(base + PWM_ISR2_OFFSET);
+		pwm_putreg(base + PWM_IER2_OFFSET, PWM_IR2_WRDY);
+	} else {
+		pwm_putreg(base + PWM_IDR2_OFFSET, PWM_IR2_WRDY);
+	}
+}
+
 int io_timer_set_dshot_mode(uint8_t timer, unsigned dshot_pwm_freq)
 {
-	UNUSED(timer);
-	UNUSED(dshot_pwm_freq);
-	return -ENOSYS;
+	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+		return -EINVAL;
+	}
+
+	if (dshot_pwm_freq == 0) {
+		return -EINVAL;
+	}
+
+	uint32_t base = get_pwm_base(timer);
+
+	if (base == 0) {
+		return -EINVAL;
+	}
+
+	uint32_t cprd = (MCK_FREQUENCY / 2u) / dshot_pwm_freq;
+
+	if (cprd == 0 || cprd > CPRD_MAX) {
+		return -ERANGE;
+	}
+
+	uint32_t channel_mask = g_dshot_channel_mask[timer] & PWM_DSHOT_SYNC_MASK;
+
+	if (channel_mask == 0) {
+		return -EINVAL;
+	}
+
+	enable_pwm_clock(timer);
+
+	pwm_putreg(base + PWM_IDR2_OFFSET, PWM_IR2_WRDY);
+	pwm_putreg(base + PWM_DIS_OFFSET, PWM_DSHOT_SYNC_MASK);
+
+	uint32_t sr = pwm_getreg(base + PWM_SR_OFFSET);
+	int timeout_us = 50000;
+
+	while ((sr & PWM_DSHOT_SYNC_MASK) && timeout_us > 0) {
+		up_udelay(10);
+		timeout_us -= 10;
+		sr = pwm_getreg(base + PWM_SR_OFFSET);
+	}
+
+	if (sr & PWM_DSHOT_SYNC_MASK) {
+		PX4_ERR("DShot PWMC timer %u disable timeout SR=0x%08lx", timer, (unsigned long)sr);
+		return -ETIMEDOUT;
+	}
+
+	g_timer_cpre[timer] = PWM_CPRE_MCK2;
+	g_timer_clock[timer] = MCK_FREQUENCY / 2u;
+	g_timer_period[timer] = cprd;
+	g_dshot_reset_duty[timer] = 0;
+
+	for (uint8_t pwm_ch = 0; pwm_ch < 4; pwm_ch++) {
+		uint32_t ch_base = base + PWM_CMR_OFFSET + (pwm_ch * PWM_CHAN_SPACING);
+
+		/* CPOL=1 on SAMV71 PWMH gives active-high pulses: high at period
+		 * start, then low after CDTY ticks. CDTY=0 was verified by the
+		 * current board symptom to idle low, so reset duty is 0.
+		 */
+		pwm_ch_putreg(ch_base, PWM_CMR_OFFSET, PWM_CPRE_MCK2 | PWM_CMR_CPOL);
+		pwm_ch_putreg(ch_base, PWM_CPRD_OFFSET, cprd);
+		pwm_ch_putreg(ch_base, PWM_CDTY_OFFSET, g_dshot_reset_duty[timer]);
+	}
+
+	/* No sync/DMA mode — polled DShot writes CDTYUPD directly per period.
+	 * SCM=0 means independent channel mode (same as hwtest). */
+	pwm_putreg(base + PWM_SCM_OFFSET, 0);
+
+	/* Channels stay DISABLED here — up_dshot_arm() will enable later */
+
+	PX4_INFO("DShot PWMC timer %u mask=0x%lx freq=%u cprd=%lu",
+		 timer, (unsigned long)channel_mask, dshot_pwm_freq, (unsigned long)cprd);
+
+	return OK;
 }

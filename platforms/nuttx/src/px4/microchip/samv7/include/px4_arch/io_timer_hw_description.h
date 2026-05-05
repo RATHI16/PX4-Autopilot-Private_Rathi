@@ -152,14 +152,14 @@ static inline constexpr io_timers_t initIOPWMTimer(PWM::PWMModule module)
 		ret.clock_register = SAM_PMC_PCER0;
 		ret.clock_bit = (1u << SAM_PID_PWM0);         /* PID 31 in PCER0 */
 		ret.vectorno = SAM_IRQ_PWM0;
-		ret.dshot.xdmac_ch_tx = 13;                   /* XDMAC HW request ID for PWM0 TX */
+		ret.dshot.xdmac_ch_tx = SAM_PID_PWM0;        /* NuttX PID for sam_dmachannel() lookup */
 		break;
 
 	case PWM::PWM1:
 		ret.clock_register = SAM_PMC_PCER1;
 		ret.clock_bit = (1u << (SAM_PID_PWM1 - 32));  /* PID 60 in PCER1 (bit 28) */
 		ret.vectorno = SAM_IRQ_PWM1;
-		ret.dshot.xdmac_ch_tx = 39;                   /* XDMAC HW request ID for PWM1 TX */
+		ret.dshot.xdmac_ch_tx = SAM_PID_PWM1;        /* NuttX PID for sam_dmachannel() lookup */
 		break;
 	}
 

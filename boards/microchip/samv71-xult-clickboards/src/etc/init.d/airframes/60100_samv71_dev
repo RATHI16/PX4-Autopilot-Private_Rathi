@@ -15,6 +15,14 @@ param set-default SYS_HAS_BARO 0
 param set-default EKF2_AID_MASK 1
 param set-default BAT_N_CELLS 3
 
-set MIXER none
+# DShot300: -4 selects 300 kbps on all 5 io_timers (PWMC + 4 TC)
+# io_timer[0]=PWMC(ch1-4), [1]=TC0CH1(ch5), [2]=TC1CH0(ch6), [3]=TC1CH2(ch7), [4]=TC2CH0(ch8)
+param set-default PWM_MAIN_TIM0 -4
+param set-default PWM_MAIN_TIM1 -4
+param set-default PWM_MAIN_TIM2 -4
+param set-default PWM_MAIN_TIM3 -4
+param set-default PWM_MAIN_TIM4 -4
+
+set MIXER quad_x
 
 . ${R}etc/init.d/rc.mc_apps

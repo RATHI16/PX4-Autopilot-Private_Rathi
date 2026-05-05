@@ -76,7 +76,7 @@
  * EXT1 Pin 9  = IRQ = PD28 (directly connected to DRDY)
  */
 #define GPIO_SPI0_CS_ICM45686   (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN12)
-
+#define DIRECT_PWM_OUTPUT_CHANNELS 8
 
 /* BMP388 Pressure sensor on EXT2 header via mikroBUS adapter
  * EXT2 Pin 15 = CS  = PD27

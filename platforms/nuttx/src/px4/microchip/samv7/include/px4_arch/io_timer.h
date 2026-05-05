@@ -169,7 +169,12 @@ __EXPORT uint32_t io_timer_channel_get_as_pwm_input(unsigned channel);
 __EXPORT void io_timer_trigger(unsigned channels_mask);
 
 /* DShot support */
+__EXPORT void io_timer_set_dshot_channel_mask(uint8_t timer, uint32_t mask);
+__EXPORT void io_timer_dshot_force_low(uint8_t timer);
+__EXPORT bool io_timer_dshot_check_unre(uint8_t timer);
 __EXPORT void io_timer_update_dma_req(uint8_t timer, bool enable);
 __EXPORT int io_timer_set_dshot_mode(uint8_t timer, unsigned dshot_pwm_freq);
+__EXPORT int io_timer_dshot_debug_pwm(uint8_t timer, unsigned rate_hz, unsigned duty_percent);
+__EXPORT void io_timer_dshot_debug_dump(uint8_t timer);
 
 __END_DECLS

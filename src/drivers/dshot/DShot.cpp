@@ -534,7 +534,11 @@ void DShot::Run()
 	}
 
 	// check at end of cycle (updateSubscriptions() can potentially change to a different WorkQueue thread)
+#if defined(CONFIG_ARCH_CHIP_SAMV7)
+	_mixing_output.updateSubscriptions(false);
+#else
 	_mixing_output.updateSubscriptions(true);
+#endif
 
 	perf_end(_cycle_perf);
 }
@@ -677,6 +681,24 @@ int DShot::custom_command(int argc, char *argv[])
 		return 0;
 	}
 
+#if defined(CONFIG_ARCH_CHIP_SAMV7)
+	if (!strcmp(verb, "hwtest")) {
+		int ret = io_timer_dshot_debug_pwm(0, 1000, 50);
+
+		if (ret != OK) {
+			PX4_ERR("PWMC hwtest failed: %d", ret);
+			return ret;
+		}
+
+		return 0;
+	}
+
+	if (!strcmp(verb, "hwdump")) {
+		io_timer_dshot_debug_dump(0);
+		return 0;
+	}
+#endif
+
 	struct VerbCommand {
 		const char *name;
 		dshot_command_t command;
@@ -775,6 +797,11 @@ After saving, the reversed direction will be regarded as the normal one. So to r
 	PRINT_MODULE_USAGE_COMMAND_DESCR("telemetry", "Enable Telemetry on a UART");
 	PRINT_MODULE_USAGE_PARAM_STRING('d', nullptr, "<device>", "UART device", false);
 	PRINT_MODULE_USAGE_PARAM_FLAG('x', "Swap RX/TX pins", true);
+
+#if defined(CONFIG_ARCH_CHIP_SAMV7)
+	PRINT_MODULE_USAGE_COMMAND_DESCR("hwtest", "SAMV7: drive PWMC outputs directly at 1 kHz 50 percent");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("hwdump", "SAMV7: dump PWMC output registers");
+#endif
 
 	// DShot commands
 	PRINT_MODULE_USAGE_COMMAND_DESCR("reverse", "Reverse motor direction");
