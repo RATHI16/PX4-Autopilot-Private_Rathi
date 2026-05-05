@@ -16,9 +16,9 @@ This branch contains PX4 Autopilot ported to Microchip SAMV71-XULT development b
 | USB CDC-ACM | ✅ Working |
 | MAVLink | ✅ Working |
 | VBUS Detection | 🔄 Stubbed (always present) |
-| BMP388 Barometer | 🔄 In Progress |
-| AK09915 Magnetometer | 🔄 Configured |
-| DShot | ⬜ Not Started |
+| BMP388 Barometer |✅ Working  |
+| AK09915 Magnetometer | ✅ Working  |
+| DShot | In progress|
 | CAN/UAVCAN | ⬜ Not Started |
 
 ## Documentation
