@@ -33,14 +33,15 @@
 /**
  * @file dshot.c
  *
- * SAMV7 DShot output — polled CDTYUPD approach (no XDMAC).
+ * SAMV7 DShot output — ISR-driven CDTYUPD writes (non-blocking).
  *
- * Each call to up_dshot_trigger() bit-bangs one full DShot frame
- * (16 data bits + 1 reset period = 17 periods) by writing CDTYUPD
- * registers directly and waiting for each period boundary.
+ * Uses the PWM0 CH0 period-end interrupt (ISR1 bit 0) to write
+ * CDTYUPD registers at each period boundary. The main thread is
+ * never blocked — up_dshot_trigger() just builds the buffer and
+ * arms the ISR which fires 17 times (~50ns each) to transmit
+ * the full DShot frame.
  *
- * At DShot300 (3.33µs per bit), a full frame takes ~57µs of CPU time.
- * This is acceptable at 1kHz PID loop rate (~5.7% utilization).
+ * Total CPU per frame: ~850ns (vs 60µs polled, vs 0 ideal DMA).
  *
  * Pin mapping (PWM0 CH0-CH3):
  *   output 0 -> PB0  -> PWM0 CH0
@@ -65,21 +66,26 @@
 #include "arm_internal.h"
 #include "hardware/sam_pwm.h"
 
-#define DSHOT_MCK_HZ              150000000UL
-#define DSHOT_CLOCK_HZ            (DSHOT_MCK_HZ / 2u)
+/* PWMC register offsets for ISR-driven writes */
+#define PWM_CH_CDTYUPD(base, ch) ((base) + 0x200u + ((ch) * 0x20u) + 0x08u)
+#define PWM_IER1_OFF             0x10u
+#define PWM_IDR1_OFF             0x14u
+#define PWM_ISR1_OFF             0x1Cu
 
-#define DSHOT_FRAME_BITS          16u
-#define DSHOT_RESET_PERIODS       1u
-#define DSHOT_TOTAL_PERIODS       (DSHOT_FRAME_BITS + DSHOT_RESET_PERIODS)
-#define DSHOT_HW_CHANNELS         4u
+#define DSHOT_MCK_HZ             150000000UL
+#define DSHOT_CLOCK_HZ           (DSHOT_MCK_HZ / 2u)
 
-#define DSHOT_NO_MOTOR            (-1)
+#define DSHOT_FRAME_BITS         16u
+#define DSHOT_RESET_PERIODS      1u
+#define DSHOT_TOTAL_PERIODS      (DSHOT_FRAME_BITS + DSHOT_RESET_PERIODS)
+#define DSHOT_HW_CHANNELS        4u
+#define DSHOT_BUFFER_WORDS       (DSHOT_TOTAL_PERIODS * DSHOT_HW_CHANNELS)
 
-/* PWMC per-channel register offsets */
-#define PWM_CH_BASE(base, ch)     ((base) + 0x200u + ((ch) * 0x20u))
-#define PWM_CDTYUPD_OFF           0x08u
-#define PWM_ISR1_OFF              0x1Cu
+#define DSHOT_NO_MOTOR           (-1)
 
+/* ─── State ─── */
+
+static uint32_t g_dma_buffer[DSHOT_BUFFER_WORDS];
 static uint16_t g_packet[MAX_TIMER_IO_CHANNELS];
 
 static int8_t g_hw_to_output[MAX_IO_TIMERS][DSHOT_HW_CHANNELS];
@@ -88,9 +94,16 @@ static uint32_t g_enabled_mask;
 static bool g_initialized;
 static bool g_armed;
 
-static uint32_t g_cprd[MAX_IO_TIMERS];
-static uint32_t g_duty_0[MAX_IO_TIMERS];
-static uint32_t g_duty_1[MAX_IO_TIMERS];
+static uint32_t g_cprd;
+static uint32_t g_duty_0;
+static uint32_t g_duty_1;
+
+/* ISR state — volatile since shared with interrupt context */
+static volatile uint8_t g_isr_bit_index;
+static volatile bool g_isr_active;
+static uint32_t g_pwm_base;
+
+/* ─── Helpers ─── */
 
 static uint16_t dshot_encode(uint16_t throttle, bool telemetry)
 {
@@ -99,12 +112,63 @@ static uint16_t dshot_encode(uint16_t throttle, bool telemetry)
 	return (uint16_t)((packet << 4) | crc);
 }
 
-static void dshot_compute_timing(uint8_t timer, unsigned dshot_pwm_freq)
+static void dshot_build_buffer(void)
 {
-	g_cprd[timer] = DSHOT_CLOCK_HZ / dshot_pwm_freq;
-	g_duty_0[timer] = (g_cprd[timer] * 3u + 4u) / 8u;
-	g_duty_1[timer] = (g_cprd[timer] * 3u + 2u) / 4u;
+	for (uint8_t bit = 0; bit < DSHOT_FRAME_BITS; bit++) {
+		uint16_t mask = (uint16_t)(1u << (DSHOT_FRAME_BITS - 1u - bit));
+
+		for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
+			int8_t output = g_hw_to_output[0][hw_ch];
+			uint32_t duty = 0;
+
+			if (output >= 0 && (g_enabled_mask & (1u << output))) {
+				duty = (g_packet[output] & mask) ? g_duty_1 : g_duty_0;
+			}
+
+			g_dma_buffer[(bit * DSHOT_HW_CHANNELS) + hw_ch] = duty;
+		}
+	}
+
+	for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
+		g_dma_buffer[(DSHOT_FRAME_BITS * DSHOT_HW_CHANNELS) + hw_ch] = 0;
+	}
 }
+
+/* ─── PWM0 ISR — fires at each CH0 period end ─── */
+
+static int dshot_pwm_isr(int irq, void *context, void *arg)
+{
+	(void)irq;
+	(void)context;
+	(void)arg;
+
+	uint32_t base = g_pwm_base;
+
+	/* Reading ISR1 clears the interrupt flag */
+	(void)getreg32(base + PWM_ISR1_OFF);
+
+	uint8_t idx = g_isr_bit_index;
+
+	if (idx >= DSHOT_TOTAL_PERIODS) {
+		/* Frame complete — disable ISR1 interrupt */
+		putreg32(0x01u, base + PWM_IDR1_OFF);
+		g_isr_active = false;
+		return OK;
+	}
+
+	/* Write CDTYUPD for all 4 channels from buffer */
+	uint32_t *src = &g_dma_buffer[idx * DSHOT_HW_CHANNELS];
+	putreg32(src[0], PWM_CH_CDTYUPD(base, 0));
+	putreg32(src[1], PWM_CH_CDTYUPD(base, 1));
+	putreg32(src[2], PWM_CH_CDTYUPD(base, 2));
+	putreg32(src[3], PWM_CH_CDTYUPD(base, 3));
+
+	g_isr_bit_index = idx + 1;
+
+	return OK;
+}
+
+/* ─── Public API ─── */
 
 int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bidirectional)
 {
@@ -117,6 +181,8 @@ int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bi
 	g_initialized = false;
 	g_armed = false;
 	g_enabled_mask = 0;
+	g_isr_active = false;
+	memset(g_dma_buffer, 0, sizeof(g_dma_buffer));
 	memset(g_packet, 0, sizeof(g_packet));
 	memset(g_timer_hw_mask, 0, sizeof(g_timer_hw_mask));
 
@@ -162,7 +228,10 @@ int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bi
 			continue;
 		}
 
-		dshot_compute_timing(timer, dshot_pwm_freq);
+		g_cprd = DSHOT_CLOCK_HZ / dshot_pwm_freq;
+		g_duty_0 = (g_cprd * 3u + 4u) / 8u;
+		g_duty_1 = (g_cprd * 3u + 2u) / 4u;
+
 		io_timer_set_dshot_channel_mask(timer, g_timer_hw_mask[timer]);
 
 		int ret = io_timer_set_dshot_mode(timer, dshot_pwm_freq);
@@ -171,12 +240,19 @@ int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bi
 			PX4_ERR("dshot: timer %u mode failed: %d", timer, ret);
 			return ret;
 		}
+
+		g_pwm_base = io_timers[timer].base;
 	}
 
+	/* Attach ISR to PWM0 interrupt vector */
+	irq_attach(io_timers[0].vectorno, dshot_pwm_isr, NULL);
+	up_enable_irq(io_timers[0].vectorno);
+
+	dshot_build_buffer();
 	g_initialized = true;
 
-	PX4_INFO("dshot: init mask=0x%02" PRIx32 " freq=%u cprd0=%" PRIu32 " t0=%" PRIu32 " t1=%" PRIu32,
-		 g_enabled_mask, dshot_pwm_freq, g_cprd[0], g_duty_0[0], g_duty_1[0]);
+	PX4_INFO("dshot: init mask=0x%02" PRIx32 " freq=%u cprd=%" PRIu32 " t0=%" PRIu32 " t1=%" PRIu32,
+		 g_enabled_mask, dshot_pwm_freq, g_cprd, g_duty_0, g_duty_1);
 
 	return (int)g_enabled_mask;
 }
@@ -200,53 +276,21 @@ void up_dshot_trigger(void)
 		return;
 	}
 
-	for (uint8_t timer = 0; timer < MAX_IO_TIMERS; timer++) {
-		if (g_timer_hw_mask[timer] == 0) {
-			continue;
-		}
-
-		uint32_t base = io_timers[timer].base;
-		uint32_t duty_0 = g_duty_0[timer];
-		uint32_t duty_1 = g_duty_1[timer];
-
-		irqstate_t flags = enter_critical_section();
-
-		/* Sync to a clean period boundary before starting the frame */
-		(void)getreg32(base + PWM_ISR1_OFF);
-
-		while (!(getreg32(base + PWM_ISR1_OFF) & 0x01u)) {}
-
-		/* Transmit 16 data bits + 1 reset = 17 periods.
-		 * Write CDTYUPD then wait for boundary (value latches and bit transmits).
-		 */
-		for (uint8_t bit = 0; bit < DSHOT_FRAME_BITS; bit++) {
-			uint16_t bmask = (uint16_t)(1u << (DSHOT_FRAME_BITS - 1u - bit));
-
-			for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
-				int8_t output = g_hw_to_output[timer][hw_ch];
-				uint32_t duty;
-
-				if (output >= 0 && (g_enabled_mask & (1u << output))) {
-					duty = (g_packet[output] & bmask) ? duty_1 : duty_0;
-				} else {
-					duty = 0;
-				}
-
-				putreg32(duty, PWM_CH_BASE(base, hw_ch) + PWM_CDTYUPD_OFF);
-			}
-
-			while (!(getreg32(base + PWM_ISR1_OFF) & 0x01u)) {}
-		}
-
-		/* Reset period: duty=0 (output LOW) */
-		for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
-			putreg32(0, PWM_CH_BASE(base, hw_ch) + PWM_CDTYUPD_OFF);
-		}
-
-		while (!(getreg32(base + PWM_ISR1_OFF) & 0x01u)) {}
-
-		leave_critical_section(flags);
+	/* If previous frame ISR is still active, skip this frame */
+	if (g_isr_active) {
+		return;
 	}
+
+	/* Build frame buffer */
+	dshot_build_buffer();
+
+	/* Reset ISR state and enable CH0 period interrupt */
+	g_isr_bit_index = 0;
+	g_isr_active = true;
+
+	/* Clear stale ISR1 flags, then enable CH0 period-end interrupt */
+	(void)getreg32(g_pwm_base + PWM_ISR1_OFF);
+	putreg32(0x01u, g_pwm_base + PWM_IER1_OFF);
 }
 
 int up_dshot_arm(bool armed)
@@ -261,6 +305,9 @@ int up_dshot_arm(bool armed)
 		return io_timer_set_enable(true, IOTimerChanMode_Dshot, IO_TIMER_ALL_MODES_CHANNELS);
 	}
 
+	/* Disarm: disable ISR, force outputs low */
+	putreg32(0x01u, g_pwm_base + PWM_IDR1_OFF);
+	g_isr_active = false;
 	io_timer_dshot_force_low(0);
 	return io_timer_set_enable(false, IOTimerChanMode_Dshot, IO_TIMER_ALL_MODES_CHANNELS);
 }
@@ -273,7 +320,7 @@ int up_bdshot_channel_status(uint8_t channel)
 
 void up_bdshot_status(void)
 {
-	PX4_INFO("bdshot unsupported (polled dshot mode)");
+	PX4_INFO("dshot ISR-driven (non-blocking)");
 }
 
 int up_bdshot_num_erpm_ready(void)

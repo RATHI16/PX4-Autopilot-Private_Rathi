@@ -1164,8 +1164,10 @@ int io_timer_set_dshot_mode(uint8_t timer, unsigned dshot_pwm_freq)
 		pwm_ch_putreg(ch_base, PWM_CDTY_OFFSET, g_dshot_reset_duty[timer]);
 	}
 
-	/* No sync/DMA mode — polled DShot writes CDTYUPD directly per period.
-	 * SCM=0 means independent channel mode (same as hwtest). */
+	/* SCM=0: independent channel mode (no sync, no DMA).
+	 * CDTYUPD auto-latches at each channel's period boundary.
+	 * ISR-driven approach writes CDTYUPD directly from interrupt.
+	 */
 	pwm_putreg(base + PWM_SCM_OFFSET, 0);
 
 	/* Channels stay DISABLED here — up_dshot_arm() will enable later */
