@@ -351,14 +351,18 @@ int io_timer_init_timer(unsigned timer, io_timer_channel_mode_t mode)
            * Default EEVT=0 selects TIOB as external-event INPUT, which prevents
            * TIOB from being used as a PWM output (datasheet §47.7.2).
            */
+          /* Inverted polarity: output LOW at period start, HIGH at RA compare.
+           * This idles LOW naturally (RA=0 → no SET event → stays LOW).
+           * DShot pulse: RA = (RC - duty) → LOW for (RC-duty), HIGH for duty.
+           */
           uint32_t cmr = TC_CMR_TCCLKS_MCK8 | TC_CMR_WAVE | TC_CMR_WAVSEL_UPRC |
                          TC_CMR_EEVT_XC0 |
-                         TC_CMR_ACPA_CLEAR | TC_CMR_ACPC_SET |
-                         TC_CMR_BCPB_CLEAR | TC_CMR_BCPC_SET;
+                         TC_CMR_ACPA_SET | TC_CMR_ACPC_CLEAR |
+                         TC_CMR_BCPB_SET | TC_CMR_BCPC_CLEAR;
           putreg32(cmr,                        base + TC_CMR_OFF);
           putreg32(g_timer_period[timer],      base + TC_RC_OFF);
-          putreg32(g_timer_period[timer],      base + TC_RA_OFF);  /* RA=RC → idle LOW */
-          putreg32(g_timer_period[timer],      base + TC_RB_OFF);
+          putreg32(0,                          base + TC_RA_OFF);  /* RA=0 → idle LOW (no SET event) */
+          putreg32(0,                          base + TC_RB_OFF);
           putreg32(TC_CCR_CLKEN | TC_CCR_SWTRG, base + TC_CCR_OFF);
           g_timers_initialized[timer] = true;
           return OK;

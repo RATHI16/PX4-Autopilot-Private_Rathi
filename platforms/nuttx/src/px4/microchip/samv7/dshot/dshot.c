@@ -143,17 +143,21 @@ static void dshot_build_buffers(void)
 		}
 	}
 
-	/* TC buffers */
+	/* TC buffers — inverted polarity: RA = RC - duty
+	 * (output is LOW from 0 to RA, then HIGH from RA to RC)
+	 */
 	for (uint8_t t = 0; t < g_tc_count; t++) {
 		if (!g_tc[t].enabled) {
 			continue;
 		}
 
 		uint8_t output = g_tc[t].output_idx;
+		uint32_t rc = g_tc[t].rc_value;
 
 		for (uint8_t bit = 0; bit < DSHOT_FRAME_BITS; bit++) {
 			uint16_t mask = (uint16_t)(1u << (DSHOT_FRAME_BITS - 1u - bit));
-			g_tc[t].buffer[bit] = (g_packet[output] & mask) ? g_tc_duty_1 : g_tc_duty_0;
+			uint32_t duty = (g_packet[output] & mask) ? g_tc_duty_1 : g_tc_duty_0;
+			g_tc[t].buffer[bit] = rc - duty;
 		}
 	}
 }
@@ -209,8 +213,8 @@ static int dshot_tc_isr(int irq, void *context, void *arg)
 	uint8_t idx = tc->isr_idx;
 
 	if (idx >= DSHOT_FRAME_BITS) {
-		/* Frame done: set RA = RC (output stays LOW), disable interrupt */
-		putreg32(tc->rc_value, tc->ra_addr);
+		/* Frame done: set RA = 0 (no SET event → output stays LOW) */
+		putreg32(0, tc->ra_addr);
 		putreg32(TC_INT_CPCS, tc->base + TC_IDR_OFF);
 		tc->active = false;
 		return OK;
@@ -329,8 +333,8 @@ int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bi
 		/* Set RC for DShot period */
 		putreg32(tc_rc, tc->base + TC_RC_OFF);
 
-		/* Set RA = RC (idle LOW) */
-		putreg32(tc_rc, tc->ra_addr);
+		/* Set RA = 0 (idle LOW — inverted: no SET event fires) */
+		putreg32(0, tc->ra_addr);
 
 		/* Attach TC ISR for this channel */
 		irq_attach(io_timers[timer_idx].vectorno, dshot_tc_isr, (void *)(uintptr_t)g_tc_count);
@@ -382,18 +386,25 @@ void up_dshot_trigger(void)
 
 	dshot_build_buffers();
 
-	/* Prepare all ISR states first (no interrupts firing yet) */
-	g_pwmc_isr_idx = 0;
+	/* Pre-write bit 0 on BOTH PWMC and TC.
+	 * ISRs start from index 1. Ensures exactly 16 pulses + sync start.
+	 */
+
+	/* PWMC: pre-write bit 0 to CDTYUPD (latches at next period boundary) */
+	uint32_t *first = &g_pwmc_buffer[0];
+	putreg32(first[0], PWM_CH_CDTYUPD(g_pwm_base, 0));
+	putreg32(first[1], PWM_CH_CDTYUPD(g_pwm_base, 1));
+	putreg32(first[2], PWM_CH_CDTYUPD(g_pwm_base, 2));
+	putreg32(first[3], PWM_CH_CDTYUPD(g_pwm_base, 3));
+	g_pwmc_isr_idx = 1;
 	g_pwmc_active = true;
 
+	/* TC: pre-write bit 0 to RA */
 	for (uint8_t t = 0; t < g_tc_count; t++) {
 		if (!g_tc[t].enabled) {
 			continue;
 		}
 
-		/* Pre-write bit 0 to RA (takes effect at next RA compare).
-		 * ISR starts from index 1. This gives exactly 16 pulses.
-		 */
 		putreg32(g_tc[t].buffer[0], g_tc[t].ra_addr);
 		g_tc[t].isr_idx = 1;
 		g_tc[t].active = true;
@@ -403,7 +414,7 @@ void up_dshot_trigger(void)
 	/* Clear PWMC ISR flag */
 	(void)getreg32(g_pwm_base + PWM_ISR1_OFF);
 
-	/* Enable ALL interrupts simultaneously in a critical section */
+	/* Enable ALL interrupts simultaneously */
 	irqstate_t flags = enter_critical_section();
 
 	putreg32(0x01u, g_pwm_base + PWM_IER1_OFF);
@@ -435,7 +446,7 @@ int up_dshot_arm(bool armed)
 
 	for (uint8_t t = 0; t < g_tc_count; t++) {
 		putreg32(TC_INT_CPCS, g_tc[t].base + TC_IDR_OFF);
-		putreg32(g_tc[t].rc_value, g_tc[t].ra_addr);
+		putreg32(0, g_tc[t].ra_addr);  /* RA=0 → idle LOW */
 		g_tc[t].active = false;
 	}
 
