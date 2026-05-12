@@ -382,23 +382,39 @@ void up_dshot_trigger(void)
 
 	dshot_build_buffers();
 
-	/* Start PWMC frame */
+	/* Prepare all ISR states first (no interrupts firing yet) */
 	g_pwmc_isr_idx = 0;
 	g_pwmc_active = true;
-	(void)getreg32(g_pwm_base + PWM_ISR1_OFF);
-	putreg32(0x01u, g_pwm_base + PWM_IER1_OFF);
 
-	/* Start each TC frame (each TC uses its own CPCS interrupt) */
 	for (uint8_t t = 0; t < g_tc_count; t++) {
 		if (!g_tc[t].enabled) {
 			continue;
 		}
 
-		g_tc[t].isr_idx = 0;
+		/* Pre-write bit 0 to RA (takes effect at next RA compare).
+		 * ISR starts from index 1. This gives exactly 16 pulses.
+		 */
+		putreg32(g_tc[t].buffer[0], g_tc[t].ra_addr);
+		g_tc[t].isr_idx = 1;
 		g_tc[t].active = true;
 		(void)getreg32(g_tc[t].base + TC_SR_OFF);
-		putreg32(TC_INT_CPCS, g_tc[t].base + TC_IER_OFF);
 	}
+
+	/* Clear PWMC ISR flag */
+	(void)getreg32(g_pwm_base + PWM_ISR1_OFF);
+
+	/* Enable ALL interrupts simultaneously in a critical section */
+	irqstate_t flags = enter_critical_section();
+
+	putreg32(0x01u, g_pwm_base + PWM_IER1_OFF);
+
+	for (uint8_t t = 0; t < g_tc_count; t++) {
+		if (g_tc[t].enabled) {
+			putreg32(TC_INT_CPCS, g_tc[t].base + TC_IER_OFF);
+		}
+	}
+
+	leave_critical_section(flags);
 }
 
 int up_dshot_arm(bool armed)
