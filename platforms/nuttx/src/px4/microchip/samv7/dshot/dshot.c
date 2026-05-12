@@ -33,21 +33,13 @@
 /**
  * @file dshot.c
  *
- * SAMV7 DShot output — ISR-driven CDTYUPD writes (non-blocking).
+ * SAMV7 DShot — ISR-driven, 8 channels (4 PWMC + 4 TC).
  *
- * Uses the PWM0 CH0 period-end interrupt (ISR1 bit 0) to write
- * CDTYUPD registers at each period boundary. The main thread is
- * never blocked — up_dshot_trigger() just builds the buffer and
- * arms the ISR which fires 17 times (~50ns each) to transmit
- * the full DShot frame.
+ * PWMC ch0-3: PWM0 CH0 period ISR writes CDTYUPD (16 bits exact)
+ * TC ch4-7: Each TC has its own CPCS ISR writing RA (16 bits exact)
  *
- * Total CPU per frame: ~850ns (vs 60µs polled, vs 0 ideal DMA).
- *
- * Pin mapping (PWM0 CH0-CH3):
- *   output 0 -> PB0  -> PWM0 CH0
- *   output 1 -> PA2  -> PWM0 CH1
- *   output 2 -> PC19 -> PWM0 CH2
- *   output 3 -> PC13 -> PWM0 CH3
+ * Each peripheral uses its OWN interrupt synchronized to its OWN
+ * period counter — eliminates cross-peripheral race conditions.
  */
 
 #include <px4_platform_common/px4_config.h>
@@ -65,43 +57,64 @@
 
 #include "arm_internal.h"
 #include "hardware/sam_pwm.h"
+#include "hardware/sam_tc.h"
 
-/* PWMC register offsets for ISR-driven writes */
+/* PWMC offsets */
 #define PWM_CH_CDTYUPD(base, ch) ((base) + 0x200u + ((ch) * 0x20u) + 0x08u)
 #define PWM_IER1_OFF             0x10u
 #define PWM_IDR1_OFF             0x14u
 #define PWM_ISR1_OFF             0x1Cu
 
+/* TC offsets */
+#define TC_RA_OFF                SAM_TC_RA_OFFSET
+#define TC_RC_OFF                SAM_TC_RC_OFFSET
+#define TC_SR_OFF                SAM_TC_SR_OFFSET
+#define TC_IER_OFF               SAM_TC_IER_OFFSET
+#define TC_IDR_OFF               SAM_TC_IDR_OFFSET
+/* TC_INT_CPCS already defined in hardware/sam_tc.h */
+
 #define DSHOT_MCK_HZ             150000000UL
-#define DSHOT_CLOCK_HZ           (DSHOT_MCK_HZ / 2u)
+#define DSHOT_PWMC_CLOCK_HZ      (DSHOT_MCK_HZ / 2u)
+#define DSHOT_TC_CLOCK_HZ        (DSHOT_MCK_HZ / 8u)
 
 #define DSHOT_FRAME_BITS         16u
-#define DSHOT_RESET_PERIODS      1u
-#define DSHOT_TOTAL_PERIODS      (DSHOT_FRAME_BITS + DSHOT_RESET_PERIODS)
 #define DSHOT_HW_CHANNELS        4u
-#define DSHOT_BUFFER_WORDS       (DSHOT_TOTAL_PERIODS * DSHOT_HW_CHANNELS)
+#define DSHOT_BUFFER_WORDS       (DSHOT_FRAME_BITS * DSHOT_HW_CHANNELS)
+#define DSHOT_MAX_TC             4u
 
 #define DSHOT_NO_MOTOR           (-1)
 
-/* ─── State ─── */
+/* ─── PWMC State ─── */
+static uint32_t g_pwmc_buffer[DSHOT_BUFFER_WORDS];
+static int8_t g_pwmc_hw_to_output[DSHOT_HW_CHANNELS];
+static uint32_t g_pwmc_duty_0;
+static uint32_t g_pwmc_duty_1;
+static volatile uint8_t g_pwmc_isr_idx;
+static volatile bool g_pwmc_active;
+static uint32_t g_pwm_base;
 
-static uint32_t g_dma_buffer[DSHOT_BUFFER_WORDS];
+/* ─── TC State (one per TC channel) ─── */
+struct tc_dshot_state {
+	uint32_t buffer[DSHOT_FRAME_BITS];
+	uint32_t base;
+	uint32_t ra_addr;
+	uint32_t rc_value;
+	uint8_t output_idx;
+	volatile uint8_t isr_idx;
+	volatile bool active;
+	bool enabled;
+};
+
+static struct tc_dshot_state g_tc[DSHOT_MAX_TC];
+static uint8_t g_tc_count;
+static uint32_t g_tc_duty_0;
+static uint32_t g_tc_duty_1;
+
+/* ─── Common State ─── */
 static uint16_t g_packet[MAX_TIMER_IO_CHANNELS];
-
-static int8_t g_hw_to_output[MAX_IO_TIMERS][DSHOT_HW_CHANNELS];
-static uint32_t g_timer_hw_mask[MAX_IO_TIMERS];
 static uint32_t g_enabled_mask;
 static bool g_initialized;
 static bool g_armed;
-
-static uint32_t g_cprd;
-static uint32_t g_duty_0;
-static uint32_t g_duty_1;
-
-/* ISR state — volatile since shared with interrupt context */
-static volatile uint8_t g_isr_bit_index;
-static volatile bool g_isr_active;
-static uint32_t g_pwm_base;
 
 /* ─── Helpers ─── */
 
@@ -112,59 +125,99 @@ static uint16_t dshot_encode(uint16_t throttle, bool telemetry)
 	return (uint16_t)((packet << 4) | crc);
 }
 
-static void dshot_build_buffer(void)
+static void dshot_build_buffers(void)
 {
+	/* PWMC buffer */
 	for (uint8_t bit = 0; bit < DSHOT_FRAME_BITS; bit++) {
 		uint16_t mask = (uint16_t)(1u << (DSHOT_FRAME_BITS - 1u - bit));
 
 		for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
-			int8_t output = g_hw_to_output[0][hw_ch];
+			int8_t output = g_pwmc_hw_to_output[hw_ch];
 			uint32_t duty = 0;
 
 			if (output >= 0 && (g_enabled_mask & (1u << output))) {
-				duty = (g_packet[output] & mask) ? g_duty_1 : g_duty_0;
+				duty = (g_packet[output] & mask) ? g_pwmc_duty_1 : g_pwmc_duty_0;
 			}
 
-			g_dma_buffer[(bit * DSHOT_HW_CHANNELS) + hw_ch] = duty;
+			g_pwmc_buffer[(bit * DSHOT_HW_CHANNELS) + hw_ch] = duty;
 		}
 	}
 
-	for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
-		g_dma_buffer[(DSHOT_FRAME_BITS * DSHOT_HW_CHANNELS) + hw_ch] = 0;
+	/* TC buffers */
+	for (uint8_t t = 0; t < g_tc_count; t++) {
+		if (!g_tc[t].enabled) {
+			continue;
+		}
+
+		uint8_t output = g_tc[t].output_idx;
+
+		for (uint8_t bit = 0; bit < DSHOT_FRAME_BITS; bit++) {
+			uint16_t mask = (uint16_t)(1u << (DSHOT_FRAME_BITS - 1u - bit));
+			g_tc[t].buffer[bit] = (g_packet[output] & mask) ? g_tc_duty_1 : g_tc_duty_0;
+		}
 	}
 }
 
-/* ─── PWM0 ISR — fires at each CH0 period end ─── */
+/* ─── PWMC ISR (CH0 period-end) ─── */
 
-static int dshot_pwm_isr(int irq, void *context, void *arg)
+static int dshot_pwmc_isr(int irq, void *context, void *arg)
 {
-	(void)irq;
-	(void)context;
-	(void)arg;
+	(void)irq; (void)context; (void)arg;
 
 	uint32_t base = g_pwm_base;
-
-	/* Reading ISR1 clears the interrupt flag */
 	(void)getreg32(base + PWM_ISR1_OFF);
 
-	uint8_t idx = g_isr_bit_index;
+	uint8_t idx = g_pwmc_isr_idx;
 
-	if (idx >= DSHOT_TOTAL_PERIODS) {
-		/* Frame complete — disable ISR1 interrupt */
+	if (idx >= DSHOT_FRAME_BITS) {
+		putreg32(0, PWM_CH_CDTYUPD(base, 0));
+		putreg32(0, PWM_CH_CDTYUPD(base, 1));
+		putreg32(0, PWM_CH_CDTYUPD(base, 2));
+		putreg32(0, PWM_CH_CDTYUPD(base, 3));
 		putreg32(0x01u, base + PWM_IDR1_OFF);
-		g_isr_active = false;
+		g_pwmc_active = false;
 		return OK;
 	}
 
-	/* Write CDTYUPD for all 4 channels from buffer */
-	uint32_t *src = &g_dma_buffer[idx * DSHOT_HW_CHANNELS];
+	uint32_t *src = &g_pwmc_buffer[idx * DSHOT_HW_CHANNELS];
 	putreg32(src[0], PWM_CH_CDTYUPD(base, 0));
 	putreg32(src[1], PWM_CH_CDTYUPD(base, 1));
 	putreg32(src[2], PWM_CH_CDTYUPD(base, 2));
 	putreg32(src[3], PWM_CH_CDTYUPD(base, 3));
 
-	g_isr_bit_index = idx + 1;
+	g_pwmc_isr_idx = idx + 1;
+	return OK;
+}
 
+/* ─── TC ISR (one per TC channel, fires on CPCS = RC compare) ─── */
+
+static int dshot_tc_isr(int irq, void *context, void *arg)
+{
+	(void)irq; (void)context;
+
+	uint8_t tc_idx = (uint8_t)(uintptr_t)arg;
+
+	if (tc_idx >= DSHOT_MAX_TC) {
+		return OK;
+	}
+
+	struct tc_dshot_state *tc = &g_tc[tc_idx];
+
+	/* Reading SR clears CPCS interrupt flag */
+	(void)getreg32(tc->base + TC_SR_OFF);
+
+	uint8_t idx = tc->isr_idx;
+
+	if (idx >= DSHOT_FRAME_BITS) {
+		/* Frame done: set RA = RC (output stays LOW), disable interrupt */
+		putreg32(tc->rc_value, tc->ra_addr);
+		putreg32(TC_INT_CPCS, tc->base + TC_IDR_OFF);
+		tc->active = false;
+		return OK;
+	}
+
+	putreg32(tc->buffer[idx], tc->ra_addr);
+	tc->isr_idx = idx + 1;
 	return OK;
 }
 
@@ -181,19 +234,32 @@ int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bi
 	g_initialized = false;
 	g_armed = false;
 	g_enabled_mask = 0;
-	g_isr_active = false;
-	memset(g_dma_buffer, 0, sizeof(g_dma_buffer));
+	g_pwmc_active = false;
+	g_tc_count = 0;
+	memset(g_pwmc_buffer, 0, sizeof(g_pwmc_buffer));
 	memset(g_packet, 0, sizeof(g_packet));
-	memset(g_timer_hw_mask, 0, sizeof(g_timer_hw_mask));
+	memset(g_tc, 0, sizeof(g_tc));
 
-	for (uint8_t timer = 0; timer < MAX_IO_TIMERS; timer++) {
-		io_timer_set_dshot_channel_mask(timer, 0);
-
-		for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
-			g_hw_to_output[timer][hw_ch] = DSHOT_NO_MOTOR;
-		}
+	for (uint8_t hw_ch = 0; hw_ch < DSHOT_HW_CHANNELS; hw_ch++) {
+		g_pwmc_hw_to_output[hw_ch] = DSHOT_NO_MOTOR;
 	}
 
+	/* PWMC timing (MCK/2 = 75MHz) */
+	uint32_t pwmc_cprd = DSHOT_PWMC_CLOCK_HZ / dshot_pwm_freq;
+	g_pwmc_duty_0 = (pwmc_cprd * 3u + 4u) / 8u;
+	g_pwmc_duty_1 = (pwmc_cprd * 3u + 2u) / 4u;
+
+	/* TC timing (MCK/8 = 18.75MHz) */
+	uint32_t tc_rc = DSHOT_TC_CLOCK_HZ / dshot_pwm_freq;
+	g_tc_duty_0 = (tc_rc * 3u + 4u) / 8u;
+	g_tc_duty_1 = (tc_rc * 3u + 2u) / 4u;
+
+	/* Initialize timers */
+	for (uint8_t timer = 0; timer < MAX_IO_TIMERS; timer++) {
+		io_timer_set_dshot_channel_mask(timer, 0);
+	}
+
+	/* ─── Configure PWMC channels (0-3) ─── */
 	for (uint8_t output = 0; output < MAX_TIMER_IO_CHANNELS; output++) {
 		if (!(channel_mask & (1u << output))) {
 			continue;
@@ -206,53 +272,80 @@ int up_dshot_init(uint32_t channel_mask, unsigned dshot_pwm_freq, bool enable_bi
 		uint8_t timer = timer_io_channels[output].timer_index;
 		uint8_t hw_ch = timer_io_channels[output].timer_channel;
 
-		if (timer >= MAX_IO_TIMERS || hw_ch >= DSHOT_HW_CHANNELS) {
+		if (hw_ch >= DSHOT_HW_CHANNELS) {
 			continue;
 		}
 
 		int ret = io_timer_channel_init(output, IOTimerChanMode_Dshot, NULL, NULL);
 
 		if (ret != OK && ret != -EBUSY) {
-			PX4_ERR("dshot: channel %u init failed: %d", output, ret);
-			return ret;
-		}
-
-		g_hw_to_output[timer][hw_ch] = (int8_t)output;
-		g_timer_hw_mask[timer] |= (1u << hw_ch);
-		g_enabled_mask |= (1u << output);
-		g_packet[output] = dshot_encode(0, false);
-	}
-
-	for (uint8_t timer = 0; timer < MAX_IO_TIMERS; timer++) {
-		if (g_timer_hw_mask[timer] == 0) {
 			continue;
 		}
 
-		g_cprd = DSHOT_CLOCK_HZ / dshot_pwm_freq;
-		g_duty_0 = (g_cprd * 3u + 4u) / 8u;
-		g_duty_1 = (g_cprd * 3u + 2u) / 4u;
-
-		io_timer_set_dshot_channel_mask(timer, g_timer_hw_mask[timer]);
-
-		int ret = io_timer_set_dshot_mode(timer, dshot_pwm_freq);
-
-		if (ret != OK) {
-			PX4_ERR("dshot: timer %u mode failed: %d", timer, ret);
-			return ret;
-		}
-
+		g_pwmc_hw_to_output[hw_ch] = (int8_t)output;
+		g_enabled_mask |= (1u << output);
+		g_packet[output] = dshot_encode(0, false);
 		g_pwm_base = io_timers[timer].base;
+		io_timer_set_dshot_channel_mask(timer, io_timer_get_group(timer) & 0x0F);
 	}
 
-	/* Attach ISR to PWM0 interrupt vector */
-	irq_attach(io_timers[0].vectorno, dshot_pwm_isr, NULL);
+	/* Setup PWMC DShot mode */
+	io_timer_set_dshot_channel_mask(0, 0x0F);
+	io_timer_set_dshot_mode(0, dshot_pwm_freq);
+
+	/* Attach PWMC ISR */
+	irq_attach(io_timers[0].vectorno, dshot_pwmc_isr, NULL);
 	up_enable_irq(io_timers[0].vectorno);
 
-	dshot_build_buffer();
+	/* ─── Configure TC channels (4-7) ─── */
+	for (uint8_t output = 0; output < MAX_TIMER_IO_CHANNELS; output++) {
+		if (!(channel_mask & (1u << output))) {
+			continue;
+		}
+
+		if (!timer_io_channels[output].is_tc) {
+			continue;
+		}
+
+		if (g_tc_count >= DSHOT_MAX_TC) {
+			break;
+		}
+
+		uint8_t timer_idx = timer_io_channels[output].timer_index;
+
+		int ret = io_timer_channel_init(output, IOTimerChanMode_Dshot, NULL, NULL);
+
+		if (ret != OK && ret != -EBUSY) {
+			continue;
+		}
+
+		struct tc_dshot_state *tc = &g_tc[g_tc_count];
+		tc->base = io_timers[timer_idx].base;
+		tc->ra_addr = tc->base + TC_RA_OFF;
+		tc->rc_value = tc_rc;
+		tc->output_idx = output;
+		tc->enabled = true;
+
+		/* Set RC for DShot period */
+		putreg32(tc_rc, tc->base + TC_RC_OFF);
+
+		/* Set RA = RC (idle LOW) */
+		putreg32(tc_rc, tc->ra_addr);
+
+		/* Attach TC ISR for this channel */
+		irq_attach(io_timers[timer_idx].vectorno, dshot_tc_isr, (void *)(uintptr_t)g_tc_count);
+		up_enable_irq(io_timers[timer_idx].vectorno);
+
+		g_enabled_mask |= (1u << output);
+		g_packet[output] = dshot_encode(0, false);
+		g_tc_count++;
+	}
+
+	dshot_build_buffers();
 	g_initialized = true;
 
-	PX4_INFO("dshot: init mask=0x%02" PRIx32 " freq=%u cprd=%" PRIu32 " t0=%" PRIu32 " t1=%" PRIu32,
-		 g_enabled_mask, dshot_pwm_freq, g_cprd, g_duty_0, g_duty_1);
+	PX4_INFO("dshot: init pwmc+tc mask=0x%02" PRIx32 " tc_count=%u freq=%u",
+		 g_enabled_mask, g_tc_count, dshot_pwm_freq);
 
 	return (int)g_enabled_mask;
 }
@@ -276,21 +369,36 @@ void up_dshot_trigger(void)
 		return;
 	}
 
-	/* If previous frame ISR is still active, skip this frame */
-	if (g_isr_active) {
+	/* Check if any ISR still active */
+	if (g_pwmc_active) {
 		return;
 	}
 
-	/* Build frame buffer */
-	dshot_build_buffer();
+	for (uint8_t t = 0; t < g_tc_count; t++) {
+		if (g_tc[t].active) {
+			return;
+		}
+	}
 
-	/* Reset ISR state and enable CH0 period interrupt */
-	g_isr_bit_index = 0;
-	g_isr_active = true;
+	dshot_build_buffers();
 
-	/* Clear stale ISR1 flags, then enable CH0 period-end interrupt */
+	/* Start PWMC frame */
+	g_pwmc_isr_idx = 0;
+	g_pwmc_active = true;
 	(void)getreg32(g_pwm_base + PWM_ISR1_OFF);
 	putreg32(0x01u, g_pwm_base + PWM_IER1_OFF);
+
+	/* Start each TC frame (each TC uses its own CPCS interrupt) */
+	for (uint8_t t = 0; t < g_tc_count; t++) {
+		if (!g_tc[t].enabled) {
+			continue;
+		}
+
+		g_tc[t].isr_idx = 0;
+		g_tc[t].active = true;
+		(void)getreg32(g_tc[t].base + TC_SR_OFF);
+		putreg32(TC_INT_CPCS, g_tc[t].base + TC_IER_OFF);
+	}
 }
 
 int up_dshot_arm(bool armed)
@@ -305,9 +413,16 @@ int up_dshot_arm(bool armed)
 		return io_timer_set_enable(true, IOTimerChanMode_Dshot, IO_TIMER_ALL_MODES_CHANNELS);
 	}
 
-	/* Disarm: disable ISR, force outputs low */
+	/* Disarm: stop all ISRs */
 	putreg32(0x01u, g_pwm_base + PWM_IDR1_OFF);
-	g_isr_active = false;
+	g_pwmc_active = false;
+
+	for (uint8_t t = 0; t < g_tc_count; t++) {
+		putreg32(TC_INT_CPCS, g_tc[t].base + TC_IDR_OFF);
+		putreg32(g_tc[t].rc_value, g_tc[t].ra_addr);
+		g_tc[t].active = false;
+	}
+
 	io_timer_dshot_force_low(0);
 	return io_timer_set_enable(false, IOTimerChanMode_Dshot, IO_TIMER_ALL_MODES_CHANNELS);
 }
@@ -320,7 +435,7 @@ int up_bdshot_channel_status(uint8_t channel)
 
 void up_bdshot_status(void)
 {
-	PX4_INFO("dshot ISR-driven (non-blocking)");
+	PX4_INFO("dshot: PWMC(4ch) + TC(%uch) ISR-driven", g_tc_count);
 }
 
 int up_bdshot_num_erpm_ready(void)

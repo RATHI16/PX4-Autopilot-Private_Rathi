@@ -76,6 +76,7 @@
 
 #include "arm_internal.h"
 #include "hardware/sam_pwm.h"
+#include "hardware/sam_tc.h"
 #include "hardware/sam_pmc.h"
 #include "sam_gpio.h"
 #include "sam_periphclks.h"
@@ -161,6 +162,7 @@
 #define TC_RA_OFF    SAM_TC_RA_OFFSET    /* 0x0014 */
 #define TC_RB_OFF    SAM_TC_RB_OFFSET    /* 0x0018 */
 #define TC_RC_OFF    SAM_TC_RC_OFFSET    /* 0x001c */
+#define TC_IDR_OFF   SAM_TC_IDR_OFFSET
 /* TC_CCR_CLKEN/CLKDIS/SWTRG and TC_CMR_* come from hardware/sam_tc.h (already included above) */
 
   static inline bool timer_is_tc(unsigned timer) {
@@ -355,8 +357,8 @@ int io_timer_init_timer(unsigned timer, io_timer_channel_mode_t mode)
                          TC_CMR_BCPB_CLEAR | TC_CMR_BCPC_SET;
           putreg32(cmr,                        base + TC_CMR_OFF);
           putreg32(g_timer_period[timer],      base + TC_RC_OFF);
-          putreg32(0,                          base + TC_RA_OFF);
-          putreg32(0,                          base + TC_RB_OFF);
+          putreg32(g_timer_period[timer],      base + TC_RA_OFF);  /* RA=RC → idle LOW */
+          putreg32(g_timer_period[timer],      base + TC_RB_OFF);
           putreg32(TC_CCR_CLKEN | TC_CCR_SWTRG, base + TC_CCR_OFF);
           g_timers_initialized[timer] = true;
           return OK;
@@ -940,7 +942,19 @@ void io_timer_set_dshot_channel_mask(uint8_t timer, uint32_t mask)
 
 void io_timer_dshot_force_low(uint8_t timer)
 {
-	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+	if (timer >= MAX_IO_TIMERS) {
+		return;
+	}
+
+	if (timer_is_tc(timer)) {
+		uint32_t base = io_timers[timer].base;
+
+		for (unsigned output = 0; output < MAX_TIMER_IO_CHANNELS; output++) {
+			if (timer_io_channels[output].timer_index == timer && timer_io_channels[output].is_tc) {
+				putreg32(0, base + timer_io_channels[output].ccr_offset);
+			}
+		}
+
 		return;
 	}
 
@@ -1102,12 +1116,44 @@ void io_timer_update_dma_req(uint8_t timer, bool enable)
 
 int io_timer_set_dshot_mode(uint8_t timer, unsigned dshot_pwm_freq)
 {
-	if (timer >= MAX_IO_TIMERS || timer_is_tc(timer)) {
+	if (timer >= MAX_IO_TIMERS) {
 		return -EINVAL;
 	}
 
 	if (dshot_pwm_freq == 0) {
 		return -EINVAL;
+	}
+
+	if (timer_is_tc(timer)) {
+		uint32_t base = io_timers[timer].base;
+		uint32_t cprd = io_timers[timer].clock_freq / dshot_pwm_freq;
+
+		if (base == 0 || cprd == 0 || cprd > CPRD_MAX) {
+			return -ERANGE;
+		}
+
+		enable_pwm_clock(timer);
+		putreg32(TC_INT_CPCS, base + TC_IDR_OFF);
+		putreg32(TC_CCR_CLKDIS, base + TC_CCR_OFF);
+
+		uint32_t cmr = TC_CMR_TCCLKS_MCK8 | TC_CMR_WAVE | TC_CMR_WAVSEL_UPRC |
+			       TC_CMR_EEVT_XC0 |
+			       TC_CMR_ACPA_CLEAR | TC_CMR_ACPC_SET |
+			       TC_CMR_BCPB_CLEAR | TC_CMR_BCPC_SET;
+		putreg32(cmr, base + TC_CMR_OFF);
+		putreg32(cprd, base + TC_RC_OFF);
+		putreg32(0, base + TC_RA_OFF);
+		putreg32(0, base + TC_RB_OFF);
+
+		g_timer_clock[timer] = io_timers[timer].clock_freq;
+		g_timer_period[timer] = cprd;
+		g_timer_cpre[timer] = 0;
+		g_dshot_reset_duty[timer] = 0;
+
+		PX4_INFO("DShot TC timer %u mask=0x%lx freq=%u rc=%lu",
+			 timer, (unsigned long)g_dshot_channel_mask[timer], dshot_pwm_freq, (unsigned long)cprd);
+
+		return OK;
 	}
 
 	uint32_t base = get_pwm_base(timer);

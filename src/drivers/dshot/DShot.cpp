@@ -37,6 +37,7 @@
 
 #include <px4_platform_common/sem.hpp>
 
+
 char DShot::_telemetry_device[] {};
 bool DShot::_telemetry_swap_rxtx{false};
 px4::atomic_bool DShot::_request_telemetry_init{false};
@@ -130,7 +131,9 @@ void DShot::enable_dshot_outputs(const bool enabled)
 				dshot_frequency_request = DSHOT600;
 
 			} else {
-				_output_mask &= ~channels; // don't use for dshot
+				// SAMV71 mixed PWMC/TC motor outputs default to DShot300 on all timer groups.
+				dshot_frequency_request = DSHOT300;
+				tim_config = -4;
 			}
 
 			if (dshot_frequency_request != 0) {
@@ -697,6 +700,7 @@ int DShot::custom_command(int argc, char *argv[])
 		io_timer_dshot_debug_dump(0);
 		return 0;
 	}
+
 #endif
 
 	struct VerbCommand {
