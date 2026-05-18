@@ -216,6 +216,25 @@ __EXPORT void board_on_reset(int status)
 #undef SAMV7_PWM_DIS
 #undef SAMV7_PWM_DIS_ALL
 
+	/* 3. Force USB detach so Linux sees a clean disconnect on every reset.
+	 *    Without this, USBHS is not reset by software reset and Linux never
+	 *    sends a bus reset, causing alternating boot enumeration failure.
+	 *    USBHS_DEVCTRL.DETACH (bit 8) pulls D+ low, signalling disconnect.
+	 *    Wait ~2 ms (300k cycles @ 150 MHz) for the host to detect it.
+	 */
+#define SAMV7_USBHS_BASE        0x40038000
+#define SAMV7_USBHS_DEVCTRL     0x00000000
+#define USBHS_DEVCTRL_DETACH    (1 << 8)
+
+	putreg32(getreg32(SAMV7_USBHS_BASE + SAMV7_USBHS_DEVCTRL) | USBHS_DEVCTRL_DETACH,
+		 SAMV7_USBHS_BASE + SAMV7_USBHS_DEVCTRL);
+
+	for (volatile int i = 0; i < 300000; i++) {}
+
+#undef SAMV7_USBHS_BASE
+#undef SAMV7_USBHS_DEVCTRL
+#undef USBHS_DEVCTRL_DETACH
+
 	UNUSED(status);
 }
 

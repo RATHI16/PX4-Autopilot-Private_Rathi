@@ -1,64 +1,34 @@
 #!/bin/sh
 #
-# SAMV71-XULT with Click sensor boards - sensors init
+# PIC32CZ CA70 Curiosity - sensors init
 #------------------------------------------------------------------------------
-# Click Board Support:
-#   - MIKROE-4044: 6DOF IMU 6 Click (ICM-20689) - SPI
-#   - MIKROE-6514: 6DOF IMU 27 Click (ICM-45686) - SPI
-#   - MIKROE-4231: Compass 4 Click (AK09915) - I2C
-#   - MIKROE-2293: Pressure 3 Click (DPS310) - I2C
-#   - MIKROE-3566: Pressure 5 Click (BMP388) - SPI
-#   - MIKROE-2935: GeoMagnetic Click (BMM150) - I2C
-#   - MIKROE-3775: 13DOF Click (BMI088 + BMM150) - I2C only
+# I2C bus: TWIHS0 (PX4 bus 1) — PA3=SDA (EXT1 pin 11), PA4=SCL (EXT1 pin 12)
+#
+# Active sensors (I2C):
+#   - MIKROE-2935: GeoMagnetic Click (BMM150)  - I2C bus 1, addr 0x10
+#   - MIKROE-3566: Pressure 5 Click (BMP388)   - I2C bus 1, addr 0x76 (SDO=GND)
+#                                                             or 0x77 (SDO=VDD)
+#   - Holybro GPS (IST8310 mag)                - I2C bus 1, addr 0x0E (TODO)
+#
+# ICM-45686 NOTE: the icm45686 PX4 driver is SPI-only (no I2C support).
+#   Connect via SPI0: MOSI=PD21, MISO=PD20, SCK=PD22, CS=PD25, DRDY=PD28.
+#   Once wired for SPI, uncomment the icm45686 line below and remove it
+#   from the I2C-only section.
 #------------------------------------------------------------------------------
 
-#
-# SPI IMU Sensors (on SPI0)
-#
+# ADC - Battery voltage/current monitoring
+board_adc start
 
-# ICM-20689 IMU - 6DOF IMU 6 Click (MIKROE-4044)
-# SPI bus 1 (PX4 numbering), CS=PD25, DRDY=PD28
-icm20689 start -s
+# ICM-45686 IMU (accel + gyro) - SPI-only driver; enable when SPI wired
+icm45686 -s -b 1 start
 
-# ICM-45686 IMU - 6DOF IMU 27 Click (MIKROE-6514)
-icm45686 start -s
+# BMM150 Magnetometer - I2C bus 1 (TWIHS0), default addr 0x10 (CSB=GND, SDO=GND)
+bmm150 -X -b 1 start
 
-#
-# I2C Sensors (on I2C0 / TWIHS0)
-#
+# BMP388 Barometer - I2C bus 1 (TWIHS0)
+# Try 0x76 (SDO=GND, default). If probe fails, try 0x77 (SDO=VDD):
+bmp388 -X -b 1 -f 100 start
 
-# AK09916 Magnetometer - Compass 4 Click (MIKROE-4231)
-# I2C address 0x0C (AK09916 driver compatible with AK09915)
-ak09916 start -I -b 1
-
-# DPS310 Barometer - Pressure 3 Click (MIKROE-2293)
-# I2C address 0x77
-dps310 start -I -b 1
-
-# BMP388 Barometer - Pressure 5 Click (MIKROE-3566)
-# SPI on EXT2 header, CS=PD27
-bmp388 start -s
-
-# BMM150 Magnetometer - GeoMagnetic Click (MIKROE-2935)
-# I2C address 0x10 (or 0x11/0x12/0x13 depending on CSB/SDO pins)
-bmm150 start -I -b 1
-
-#
-# 13DOF Click (MIKROE-3775) - I2C only
-# Contains: BMI088 (accel+gyro) + BMM150 (mag) + BME680 (environmental)
-# Note: BME680 is environmental sensor, not used by PX4
-#
-
-# BMI088 IMU from 13DOF Click
-# I2C addresses: Accel=0x18/0x19, Gyro=0x68/0x69
-# Must start accel and gyro separately with -A/-G and -I (internal I2C)
-bmi088_i2c start -A -I -b 1
-bmi088_i2c start -G -I -b 1
-
-# BMM150 Magnetometer from 13DOF Click (same as GeoMagnetic Click)
-# Already covered above if enabled
-
-#------------------------------------------------------------------------------
-# Note: Sensors will report "no device on bus" if Click board not connected.
-# This is expected behavior - only uncomment sensors for boards you have.
-#------------------------------------------------------------------------------
+# IST8310 Magnetometer (Holybro GPS internal) - I2C bus 1, addr 0x0E
+# Uncomment when GPS is connected
+#ist8310 -X -b 1 -a 0x0E start

@@ -71,19 +71,18 @@
 #define BOARD_HAS_CONTROL_STATUS_LEDS      1
 #define BOARD_ARMED_STATE_LED  LED_BLUE
 
-/* ICM20689 on EXT1 header (not mikroBUS socket)
- * EXT1 Pin 15 = CS  = PD25
- * EXT1 Pin 9  = IRQ = PD28 (directly connected to DRDY)
+/* ICM-45686 on EXT1 header (MIKROE-6514 6DOF IMU 27 Click)
+ * EXT1 Pin 15 = CS   = PD25
+ * EXT1 Pin 9  = DRDY = PD28
  */
-#define GPIO_SPI0_CS_ICM20689    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN25)
-#define GPIO_SPI0_DRDY_ICM20689  (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_INT_FALLING|GPIO_PORT_PIOD|GPIO_PIN28)
-#define GPIO_SPI0_DRDY_ICM20689_IRQ  SAM_IRQ_PD28
+#define GPIO_SPI0_CS_ICM45686    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN25)
+#define GPIO_SPI0_DRDY_ICM45686  (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_INT_FALLING|GPIO_PORT_PIOD|GPIO_PIN28)
+#define GPIO_SPI0_DRDY_ICM45686_IRQ  SAM_IRQ_PD28
 
-/* BMP388 Pressure sensor on EXT2 header via mikroBUS adapter
- * EXT2 Pin 15 = CS  = PD27
- * BMP388 does not use DRDY, uses polling mode
+/* BMP388 Pressure sensor - Pressure 5 Click (MIKROE-3566)
+ * Using I2C0 (TWIHS0, PA3/PA4), address 0x76 (SDO=GND) or 0x77 (SDO=VDD)
+ * PD27 (EXT2 Pin 15) is no longer used as SPI CS
  */
-#define GPIO_SPI0_CS_BMP388      (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN27)
 
 /* mikroBUS Socket RST pins - Active LOW, start HIGH to release reset
  * Socket 1: PA19 (RST), PA0 (INT)
@@ -263,9 +262,8 @@
 
 #define PX4_GPIO_INIT_LIST { \
 		GPIO_nLED_BLUE,           \
-		GPIO_SPI0_CS_ICM20689,    \
-		GPIO_SPI0_DRDY_ICM20689,  \
-		GPIO_SPI0_CS_BMP388,      \
+		GPIO_SPI0_CS_ICM45686,    \
+		GPIO_SPI0_DRDY_ICM45686,  \
 		GPIO_MB1_RST,             \
 		/* GPIO_EXT1_RST conflicts with UART1 RX (PA5 Periph C) */ \
 		/* GPIO_EXT1_RST,         */ \
@@ -274,6 +272,15 @@
 		GPIO_LED_SAFETY,          \
 		GPIO_nARMED_INIT,         \
 	}
+
+// Delay I2C bus initialization until after board_app_initialize() completes.
+// Without this, px4_platform_i2c_init() runs inside px4_platform_init() and
+// sends an I2C general-call reset on TWIHS0, generating a START condition that
+// locks the ICM-45686 into I2C mode before the SPI driver gets a chance to
+// claim it. With BOARD_I2C_LATEINIT defined, px4_platform_i2c_init() is
+// skipped entirely; board_app_initialize() initializes TWIHS0 hardware (no
+// traffic), and rc.board_sensors starts the ICM-45686 via SPI first.
+#define BOARD_I2C_LATEINIT
 
 // Console buffer - ENABLED: lazy initialization implemented in console_buffer.cpp
 // (ensure_initialized() with double-checked locking avoids static init issues)
