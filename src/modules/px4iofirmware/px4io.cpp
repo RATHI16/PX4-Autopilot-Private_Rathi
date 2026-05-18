@@ -59,7 +59,9 @@
 # include <lib/perf/perf_counter.h>
 #endif
 
+#if defined(CONFIG_ARCH_CHIP_STM32)
 #include <stm32_uart.h>
+#endif
 
 #define DEBUG
 #include "px4io.h"
@@ -83,7 +85,13 @@ static volatile uint8_t msg_next_in;
  * output.
  */
 #define NUM_MSG 1
+#if defined(CONFIG_USART1_TXBUFSIZE)
 static char msg[NUM_MSG][CONFIG_USART1_TXBUFSIZE];
+#elif defined(CONFIG_USART5_TXBUFSIZE)
+static char msg[NUM_MSG][CONFIG_USART5_TXBUFSIZE];
+#else
+static char msg[NUM_MSG][128];
+#endif
 
 static void heartbeat_blink(void);
 static void ring_blink(void);
@@ -291,7 +299,11 @@ extern "C" __EXPORT int user_start(int argc, char *argv[])
 	 * a DMA event.
 	 */
 #ifdef CONFIG_ARCH_DMA
+#if defined(CONFIG_ARCH_CHIP_STM32)
 	hrt_call_every(&serial_dma_call, 1000, 1000, (hrt_callout)stm32_serial_dma_poll, NULL);
+#elif defined(CONFIG_ARCH_CHIP_SAMD2X)
+	hrt_call_every(&serial_dma_call, 1000, 1000, (hrt_callout)sam_serial_dma_poll, NULL);
+#endif
 #endif
 
 	/* print some startup info */

@@ -1,0 +1,213 @@
+/****************************************************************************
+ * boards/microchip/samd21-io/nuttx-config/include/board.h
+ *
+ * SAMD21J18A PX4IO co-processor board configuration.
+ *
+ * Clock strategy: DFLL48M in open-loop mode → GCLK0 = 48 MHz.
+ * OSC8M feeds GCLK1 at 8 MHz (required by NuttX clock-config driver).
+ ****************************************************************************/
+
+#pragma once
+
+#include <nuttx/config.h>
+
+/* XOSC — not present on this board */
+
+#undef  BOARD_XOSC_ENABLE
+#define BOARD_XOSC_FREQUENCY         12000000UL
+#define BOARD_XOSC_STARTUPTIME       SYSCTRL_XOSC_STARTUP_1S
+#define BOARD_XOSC_ISCRYSTAL         1
+#define BOARD_XOSC_AMPGC             1
+#define BOARD_XOSC_ONDEMAND          1
+#undef  BOARD_XOSC_RUNINSTANDBY
+
+/* XOSC32K — not present */
+
+#undef  BOARD_XOSC32K_ENABLE
+#define BOARD_XOSC32K_FREQUENCY      32768
+#define BOARD_XOSC32K_STARTUPTIME    SYSCTRL_XOSC32K_STARTUP_2S
+#define BOARD_XOSC32K_ISCRYSTAL      1
+#define BOARD_XOSC32K_AAMPEN         1
+#undef  BOARD_XOSC32K_EN1KHZ
+#define BOARD_XOSC32K_EN32KHZ        1
+#define BOARD_XOSC32K_ONDEMAND       1
+#undef  BOARD_XOSC32K_RUNINSTANDBY
+
+/* OSC32K — not used */
+
+#undef  BOARD_OSC32K_ENABLE
+#define BOARD_OSC32K_FREQUENCY       32768
+#define BOARD_OSC32K_STARTUPTIME     SYSCTRL_OSC32K_STARTUP_4MS
+#define BOARD_OSC32K_EN1KHZ          1
+#define BOARD_OSC32K_EN32KHZ         1
+#define BOARD_OSC32K_ONDEMAND        1
+#undef  BOARD_OSC32K_RUNINSTANDBY
+
+/* OSC8M — always on, used to start DFLL */
+
+#define BOARD_OSC8M_PRESCALER        SYSCTRL_OSC8M_PRESC_DIV1
+#define BOARD_OSC8M_ONDEMAND         1
+#undef  BOARD_OSC8M_RUNINSTANDBY
+#define BOARD_OSC8M_FREQUENCY        8000000
+
+/* OSCULP32K */
+
+#define BOARD_OSCULP32K_FREQUENCY    32000
+
+/* DFLL48M — open-loop mode, targeting 48 MHz */
+
+#define BOARD_DFLL_ENABLE            1
+#define BOARD_DFLL_OPENLOOP          1
+#undef  BOARD_DFLL_ONDEMAND
+#undef  BOARD_DFLL_RUNINSTANDBY
+
+/* Closed-loop parameters (kept for reference; unused in open-loop) */
+#define BOARD_DFLL_SRCGCLKGEN         1
+#define BOARD_DFLL_MULTIPLIER         6
+#define BOARD_DFLL_QUICKLOCK          1
+#define BOARD_DFLL_TRACKAFTERFINELOCK 1
+#define BOARD_DFLL_KEEPLOCKONWAKEUP   1
+#define BOARD_DFLL_ENABLECHILLCYCLE   1
+#define BOARD_DFLL_MAXCOARSESTEP      (0x1f / 4)
+#define BOARD_DFLL_MAXFINESTEP        (0xff / 4)
+
+#define BOARD_DFLL_FREQUENCY          48000000
+
+/* GCLK configuration */
+
+#define BOARD_GCLK_ENABLE             1
+
+/* GCLK0 (main) — DFLL48M, no divider → 48 MHz */
+#undef  BOARD_GCLK0_RUN_IN_STANDBY
+#define BOARD_GCLK0_CLOCK_SOURCE      GCLK_GENCTRL_SRC_DFLL48M
+#define BOARD_GCLK0_PRESCALER         1
+#undef  BOARD_GCLK0_OUTPUT_ENABLE
+#define BOARD_GCLK0_FREQUENCY         (BOARD_DFLL_FREQUENCY / BOARD_GCLK0_PRESCALER)
+
+/* GCLK1 — OSC8M, no divider → 8 MHz (drives DFLL in closed-loop; harmless in open-loop) */
+#define BOARD_GCLK1_ENABLE            1
+#undef  BOARD_GCLK1_RUN_IN_STANDBY
+#define BOARD_GCLK1_CLOCK_SOURCE      GCLK_GENCTRL_SRC_OSC8M
+#define BOARD_GCLK1_PRESCALER         1
+#undef  BOARD_GCLK1_OUTPUT_ENABLE
+#define BOARD_GCLK1_FREQUENCY         (BOARD_OSC8M_FREQUENCY / BOARD_GCLK1_PRESCALER)
+
+/* GCLK2-7 — disabled */
+#undef  BOARD_GCLK2_ENABLE
+#undef  BOARD_GCLK2_RUN_IN_STANDBY
+#define BOARD_GCLK2_CLOCK_SOURCE      GCLK_GENCTRL_SRC_OSC8M
+#define BOARD_GCLK2_PRESCALER         1
+#undef  BOARD_GCLK2_OUTPUT_ENABLE
+#define BOARD_GCLK2_FREQUENCY         (BOARD_OSC8M_FREQUENCY / BOARD_GCLK2_PRESCALER)
+
+#undef  BOARD_GCLK3_ENABLE
+#undef  BOARD_GCLK3_RUN_IN_STANDBY
+#define BOARD_GCLK3_CLOCK_SOURCE      GCLK_GENCTRL_SRC_OSC8M
+#define BOARD_GCLK3_PRESCALER         1
+#undef  BOARD_GCLK3_OUTPUT_ENABLE
+#define BOARD_GCLK3_FREQUENCY         (BOARD_OSC8M_FREQUENCY / BOARD_GCLK3_PRESCALER)
+
+#undef  BOARD_GCLK4_ENABLE
+#undef  BOARD_GCLK4_RUN_IN_STANDBY
+#define BOARD_GCLK4_CLOCK_SOURCE      GCLK_GENCTRL_SRC_OSC8M
+#define BOARD_GCLK4_PRESCALER         1
+#undef  BOARD_GCLK4_OUTPUT_ENABLE
+#define BOARD_GCLK4_FREQUENCY         (BOARD_OSC8M_FREQUENCY / BOARD_GCLK4_PRESCALER)
+
+#undef  BOARD_GCLK5_ENABLE
+#undef  BOARD_GCLK5_RUN_IN_STANDBY
+#define BOARD_GCLK5_CLOCK_SOURCE      GCLK_GENCTRL_SRC_OSC8M
+#define BOARD_GCLK5_PRESCALER         1
+#undef  BOARD_GCLK5_OUTPUT_ENABLE
+#define BOARD_GCLK5_FREQUENCY         (BOARD_OSC8M_FREQUENCY / BOARD_GCLK5_PRESCALER)
+
+#undef  BOARD_GCLK6_ENABLE
+#undef  BOARD_GCLK6_RUN_IN_STANDBY
+#define BOARD_GCLK6_CLOCK_SOURCE      GCLK_GENCTRL_SRC_OSC8M
+#define BOARD_GCLK6_PRESCALER         1
+#undef  BOARD_GCLK6_OUTPUT_ENABLE
+#define BOARD_GCLK6_FREQUENCY         (BOARD_OSC8M_FREQUENCY / BOARD_GCLK6_PRESCALER)
+
+#undef  BOARD_GCLK7_ENABLE
+#undef  BOARD_GCLK7_RUN_IN_STANDBY
+#define BOARD_GCLK7_CLOCK_SOURCE      GCLK_GENCTRL_SRC_OSC8M
+#define BOARD_GCLK7_PRESCALER         1
+#undef  BOARD_GCLK7_OUTPUT_ENABLE
+#define BOARD_GCLK7_FREQUENCY         (BOARD_OSC8M_FREQUENCY / BOARD_GCLK7_PRESCALER)
+
+/* Main clock */
+#define BOARD_GCLK_MAIN_FREQUENCY     BOARD_GCLK0_FREQUENCY
+
+/* Bus clock dividers — all /1 */
+#define BOARD_CPU_FAILDECT            1
+#define BOARD_CPU_DIVIDER             PM_CPUSEL_CPUDIV_1
+#define BOARD_APBA_DIVIDER            PM_APBASEL_APBADIV_1
+#define BOARD_APBB_DIVIDER            PM_APBBSEL_APBBDIV_1
+#define BOARD_APBC_DIVIDER            PM_APBCSEL_APBCDIV_1
+
+/* Derived frequencies */
+#define BOARD_MCK_FREQUENCY           BOARD_GCLK_MAIN_FREQUENCY
+#define BOARD_CPU_FREQUENCY           BOARD_MCK_FREQUENCY
+#define BOARD_DFLL48M_FREQUENCY       BOARD_DFLL_FREQUENCY
+
+/* FLASH wait states — 48 MHz @ 3.3V needs 1 wait state (2 to be safe) */
+#define BOARD_FLASH_WAITSTATES        2
+
+/* SERCOM definitions -------------------------------------------------------
+ * Slow clock generator shared by all SERCOM (GCLK0 = 48 MHz).
+ */
+#define BOARD_SERCOM05_SLOW_GCLKGEN   0
+
+/* SERCOM5 — FMU UART link (1.5 Mbps)
+ *   PAD0 = TX : PB16  FUNCC  (PORT_SERCOM5_PAD0_1)
+ *   PAD1 = RX : PB17  FUNCC  (PORT_SERCOM5_PAD1_1)
+ */
+#define BOARD_SERCOM5_GCLKGEN         0
+#define BOARD_SERCOM5_SLOW_GCLKGEN    BOARD_SERCOM05_SLOW_GCLKGEN
+#define BOARD_SERCOM5_MUXCONFIG       (USART_CTRLA_TXPAD0_1 | USART_CTRLA_RXPAD1)
+#define BOARD_SERCOM5_PINMAP_PAD0     PORT_SERCOM5_PAD0_1  /* PB16 FUNCC = TX */
+#define BOARD_SERCOM5_PINMAP_PAD1     PORT_SERCOM5_PAD1_1  /* PB17 FUNCC = RX */
+#define BOARD_SERCOM5_PINMAP_PAD2     0
+#define BOARD_SERCOM5_PINMAP_PAD3     0
+#define BOARD_SERCOM5_FREQUENCY       BOARD_GCLK0_FREQUENCY
+
+/* SERCOM3 — SBUS input (100 kbps, inverted)
+ *   PAD3 = RX : PA25  FUNCC  (PORT_SERCOM3_PAD3_1)
+ */
+#define BOARD_SERCOM3_GCLKGEN         0
+#define BOARD_SERCOM3_SLOW_GCLKGEN    BOARD_SERCOM05_SLOW_GCLKGEN
+#define BOARD_SERCOM3_MUXCONFIG       (USART_CTRLA_TXPAD0_1 | USART_CTRLA_RXPAD3)
+#define BOARD_SERCOM3_PINMAP_PAD0     0
+#define BOARD_SERCOM3_PINMAP_PAD1     0
+#define BOARD_SERCOM3_PINMAP_PAD2     0
+#define BOARD_SERCOM3_PINMAP_PAD3     PORT_SERCOM3_PAD3_1  /* PA25 FUNCC = RX */
+#define BOARD_SERCOM3_FREQUENCY       BOARD_GCLK0_FREQUENCY
+
+/* SERCOM0 — DSM/Spektrum input (115200 bps)
+ *   PAD1 = RX : PA5   FUNCD  (PORT_SERCOM0_PAD1_2)
+ */
+#define BOARD_SERCOM0_GCLKGEN         0
+#define BOARD_SERCOM0_SLOW_GCLKGEN    BOARD_SERCOM05_SLOW_GCLKGEN
+#define BOARD_SERCOM0_MUXCONFIG       (USART_CTRLA_TXPAD0_1 | USART_CTRLA_RXPAD1)
+#define BOARD_SERCOM0_PINMAP_PAD0     0
+#define BOARD_SERCOM0_PINMAP_PAD1     PORT_SERCOM0_PAD1_2  /* PA5 FUNCD = RX */
+#define BOARD_SERCOM0_PINMAP_PAD2     0
+#define BOARD_SERCOM0_PINMAP_PAD3     0
+#define BOARD_SERCOM0_FREQUENCY       BOARD_GCLK0_FREQUENCY
+
+/* LED definitions ----------------------------------------------------------
+ * PB0 = Blue  (heartbeat)
+ * PB1 = Amber (error/alarm)
+ * PB2 = Safety LED
+ * PB3 = Green (armed)
+ */
+
+#define GPIO_LED_BLUE    (PORT_OUTPUT | PORT_PULL_NONE | PORTB | PORT_PIN0)
+#define GPIO_LED_AMBER   (PORT_OUTPUT | PORT_PULL_NONE | PORTB | PORT_PIN1)
+#define GPIO_LED_SAFETY  (PORT_OUTPUT | PORT_PULL_NONE | PORTB | PORT_PIN2)
+#define GPIO_LED_GREEN   (PORT_OUTPUT | PORT_PULL_NONE | PORTB | PORT_PIN3)
+
+#define LED_BLUE(on)     sam_portwrite(GPIO_LED_BLUE,   (on))
+#define LED_AMBER(on)    sam_portwrite(GPIO_LED_AMBER,  (on))
+#define LED_SAFETY(on)   sam_portwrite(GPIO_LED_SAFETY, (on))
+#define LED_GREEN(on)    sam_portwrite(GPIO_LED_GREEN,  (on))

@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2015-2017 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2024 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,45 +31,13 @@
 #
 ############################################################################
 
-option(PX4IO_PERF "Enable px4io perf counters" OFF)
+px4_add_library(arch_board_reset
+	board_reset.cpp
+)
 
-# Select platform-specific implementations
-if(CONFIG_ARCH_CHIP_SAMD2X OR CONFIG_ARCH_CHIP_SAMD21J18A)
-	set(SERIAL_IMPL serial_samd.cpp)
-	set(ADC_IMPL "")          # ADC provided by arch_adc (samd2l2 platform layer)
+# up_systemreset
+if (NOT DEFINED CONFIG_BUILD_FLAT)
+	target_link_libraries(arch_board_reset PRIVATE nuttx_karch)
 else()
-	set(SERIAL_IMPL serial.cpp)
-	set(ADC_IMPL adc.cpp)     # STM32 inline ADC implementation
-endif()
-
-add_library(px4iofirmware
-	${ADC_IMPL}
-	controls.cpp
-	mixer.cpp
-	px4io.cpp
-	registers.c
-	safety_button.cpp
-	${SERIAL_IMPL}
-)
-
-set_property(GLOBAL APPEND PROPERTY PX4_MODULE_LIBRARIES px4iofirmware)
-target_link_libraries(px4iofirmware
-	PUBLIC
-		arch_hrt
-		arch_io_pins
-		arch_watchdog_iwdg
-		nuttx_apps
-		nuttx_arch
-		nuttx_c
-		nuttx_mm
-		rc
-)
-
-if(CONFIG_ARCH_CHIP_SAMD2X OR CONFIG_ARCH_CHIP_SAMD21J18A)
-	target_link_libraries(px4iofirmware PUBLIC arch_adc)
-endif()
-
-if(PX4IO_PERF)
-	target_compile_definitions(px4iofirmware PRIVATE PX4IO_PERF)
-	target_link_libraries(px4iofirmware PRIVATE perf)
+	target_link_libraries(arch_board_reset PRIVATE nuttx_arch)
 endif()

@@ -183,4 +183,9 @@ extern void	isr_debug(uint8_t level, const char *fmt, ...);
 /** schedule a reboot */
 extern void schedule_reboot(uint32_t time_delta_usec);
 
+/** SAM DMA poll — called at 1 kHz to detect end of partial packets */
+#if defined(CONFIG_ARCH_CHIP_SAMD2X)
+extern void sam_serial_dma_poll(void);
+#endif
+
 __END_DECLS

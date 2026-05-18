@@ -47,7 +47,9 @@
 
 #include <drivers/drv_hrt.h>
 #include <drivers/drv_pwm_output.h>
+#if defined(CONFIG_ARCH_CHIP_STM32)
 #include <stm32_pwr.h>
+#endif
 #include <rc/dsm.h>
 #include <rc/sbus.h>
 
