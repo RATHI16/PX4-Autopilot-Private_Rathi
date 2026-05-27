@@ -539,6 +539,10 @@ void DShot::Run()
 	// check at end of cycle (updateSubscriptions() can potentially change to a different WorkQueue thread)
 #if defined(CONFIG_ARCH_CHIP_SAMV7)
 	_mixing_output.updateSubscriptions(false);
+	/* Force 1kHz scheduling — ensures DShot frames sent every 1ms
+	 * even without sensor data driving the control loop.
+	 */
+	ScheduleDelayed(1000);
 #else
 	_mixing_output.updateSubscriptions(true);
 #endif

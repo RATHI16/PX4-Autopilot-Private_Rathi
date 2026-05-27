@@ -1214,15 +1214,20 @@ int io_timer_set_dshot_mode(uint8_t timer, unsigned dshot_pwm_freq)
 		pwm_ch_putreg(ch_base, PWM_CDTY_OFFSET, g_dshot_reset_duty[timer]);
 	}
 
-	/* SCM=0: independent channel mode (no sync, no DMA).
-	 * CDTYUPD auto-latches at each channel's period boundary.
-	 * ISR-driven approach writes CDTYUPD directly from interrupt.
+	/* SCM: Synchronous Channel Mode with DMA (UPDM=2).
+	 * All 4 PWMC channels synchronized to CH0 period.
+	 * XDMAC writes duty values to PWM_DMAR; hardware distributes
+	 * to each channel's CDTYUPD at each period boundary.
 	 */
-	pwm_putreg(base + PWM_SCM_OFFSET, 0);
+	pwm_putreg(base + PWM_SCM_OFFSET,
+		   SCM_SYNC_SEL(channel_mask) | SCM_UPDM_MODE2);
+
+	/* SCUP: Update period = 0 (update every period) */
+	pwm_putreg(base + PWM_SCUP_OFFSET, 0);
 
 	/* Channels stay DISABLED here — up_dshot_arm() will enable later */
 
-	PX4_INFO("DShot PWMC timer %u mask=0x%lx freq=%u cprd=%lu",
+	PX4_INFO("DShot PWMC timer %u mask=0x%lx freq=%u cprd=%lu SCM=UPDM2+DMA",
 		 timer, (unsigned long)channel_mask, dshot_pwm_freq, (unsigned long)cprd);
 
 	return OK;
