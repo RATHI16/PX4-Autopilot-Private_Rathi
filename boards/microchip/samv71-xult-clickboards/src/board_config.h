@@ -55,52 +55,38 @@
 
 /* GPIOs ***********************************************************************************/
 
-/* LEDs - SAMV71-XULT has two LEDs:
- *   PA23 - Yellow LED0
- *   PC9  - Yellow LED1
+/* LEDs — Custom FC Board (active LOW: drive LOW = LED ON)
+ *   PC17 - LED1 (Blue/Status)
+ *   PA0  - LED2 (Amber/Activity)
+ *   PD10 - LED3 (Red/Error)
  */
-
-#define GPIO_nLED_BLUE       /* PA23 */  (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN23)
-
-/* Only one LED available on SAMV71-XULT - PA23 (Blue LED)
- * Driver will use drv_board_led.h defaults:
- * LED_BLUE=0, LED_AMBER=1, LED_RED=1, LED_GREEN=3
- * Board only implements LED_BLUE (index 0)
- */
+#define GPIO_nLED_BLUE       /* PC17 */ (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOC|GPIO_PIN17)
+#define GPIO_nLED_AMBER      /* PA0  */ (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN0)
+#define GPIO_nLED_RED        /* PD10 */ (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN10)
 
 #define BOARD_HAS_CONTROL_STATUS_LEDS      1
 #define BOARD_ARMED_STATE_LED  LED_BLUE
 
-/* ICM20689 on EXT1 header (not mikroBUS socket)
- * EXT1 Pin 15 = CS  = PD25
- * EXT1 Pin 9  = IRQ = PD28 (directly connected to DRDY)
- */
+/* SPI0 — IMU1 (ICM-45686): PD20(MISO), PD21(MOSI), PD22(SCK), PD12(CS) */
 #define GPIO_SPI0_CS_ICM45686   (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN12)
-#define DIRECT_PWM_OUTPUT_CHANNELS 8
 
-/* BMP388 Pressure sensor on EXT2 header via mikroBUS adapter
- * EXT2 Pin 15 = CS  = PD27
- * BMP388 does not use DRDY, uses polling mode
- */
+/* SPI1 — IMU2: PC26(MISO), PC27(MOSI), PC24(SCK), PC25(CS) */
+#define GPIO_SPI1_CS_IMU2       (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOC|GPIO_PIN25)
 
-/* mikroBUS Socket RST pins - Active LOW, start HIGH to release reset
- * Socket 1: PA19 (RST), PA0 (INT)
- * Socket 2: PB0 (RST) - NOT AVAILABLE: PB0 used for PWMC Motor 4
- * EXT1 adapter: PA5 (RST) - for Xplained Pro extension reset line (EXT1 pin 10)
- * EXT2 adapter: PA24 (RST) - for Xplained Pro extension reset line (EXT2 pin 10)
- * Compass 4 Click (AK09915) requires RST pin HIGH to operate
- *
- * NOTE: GPIO_MB2_RST (PB0) removed - pin now used for PWMC0 CH0 (Motor 4)
- */
-#define GPIO_MB1_RST     (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN19)
-/* GPIO_MB2_RST (PB0) REMOVED - used for PWMC Motor 4 */
-#define GPIO_EXT2_RST    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN24)
+/* IMU Interrupt Pins */
+#define GPIO_IMU1_DRDY    (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOC|GPIO_PIN2)   /* PC2 */
+#define GPIO_IMU2_DRDY    (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOC|GPIO_PIN3)   /* PC3 */
 
-/* Primary storage defaults to SD card. Enable BOARD_HAS_FRAM_CLICK (and re-add
- * FLASH_BASED_PARAMS) only when a FRAM Click board or other flash backend is
- * present.
- */
-// #define FLASH_BASED_PARAMS
+/* CAN0 Standby Control — PA29 (active LOW: LOW = transceiver active) */
+#define GPIO_CAN0_STB     (GPIO_OUTPUT|GPIO_OUTPUT_CLEAR|GPIO_PORT_PIOA|GPIO_PIN29)
+
+/* Power Control GPIOs */
+#define GPIO_3V3_EN_PERIPH    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOB|GPIO_PIN13)   /* PB13 */
+#define GPIO_5V_EN_PERIPH     (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOE|GPIO_PIN1)    /* PE1  */
+#define GPIO_nFLT_5V_PERIPH   (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOE|GPIO_PIN2)    /* PE2  */
+#define GPIO_nFLT_5V_TELE     (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOB|GPIO_PIN5)    /* PB5  */
+#define GPIO_EN_5V_TELE       (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN29)   /* PD29 */
+#define GPIO_EN_CRYPTO_RST    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN24)   /* PD24 */
 
 /* ADC Configuration ***********************************************************************************/
 
@@ -134,39 +120,20 @@
 
 /* Safety Button and LED Configuration *************************************************************/
 
-/* Safety Button: SW0 (PA9) - ACTIVE LOW (pressed = GND)
- * SafetyButton driver expects active-HIGH, so we define BOARD_SAFETY_BUTTON_ACTIVE_LOW
- * to signal that the driver should invert the read.
- */
-#define GPIO_BTN_SAFETY       (GPIO_INPUT | GPIO_CFG_PULLUP | GPIO_PORT_PIOA | GPIO_PIN9)
-#define BOARD_SAFETY_BUTTON_ACTIVE_LOW  1  /* Required: driver must invert read */
+/* Safety Button: PE4 (GPS_SAFETY_SW) - ACTIVE LOW (pressed = GND) */
+#define GPIO_BTN_SAFETY       (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOE|GPIO_PIN4)
+#define BOARD_SAFETY_BUTTON_ACTIVE_LOW  1
 
-/* Safety LED: LED1 (PC9) - Active LOW (LED on when pin LOW) */
-#define GPIO_LED_SAFETY       (GPIO_OUTPUT | GPIO_CFG_DEFAULT | GPIO_OUTPUT_SET | GPIO_PORT_PIOC | GPIO_PIN9)
-
-/* Armed Status Output: PA20 - nARMED signal for external indication
- * Active LOW: LOW = armed, HIGH = not armed
- * _INIT version for initialization list, GPIO_nARMED for runtime
- */
-#define GPIO_nARMED_INIT      (GPIO_OUTPUT | GPIO_CFG_PULLUP | GPIO_OUTPUT_SET | GPIO_PORT_PIOA | GPIO_PIN20)
-#define GPIO_nARMED           (GPIO_OUTPUT | GPIO_CFG_DEFAULT | GPIO_OUTPUT_CLEAR | GPIO_PORT_PIOA | GPIO_PIN20)
-
-/* External lockout state macros (active low: LOW=armed, HIGH=not armed) */
-#define BOARD_INDICATE_EXTERNAL_LOCKOUT_STATE(enabled) \
-	px4_arch_gpiowrite(GPIO_nARMED, !(enabled))
-#define BOARD_GET_EXTERNAL_LOCKOUT_STATE() \
-	(!px4_arch_gpioread(GPIO_nARMED))
+/* Safety LED: PE3 (GPS_SAFETY_SW_LED) - Active LOW */
+#define GPIO_LED_SAFETY       (GPIO_OUTPUT|GPIO_CFG_DEFAULT|GPIO_OUTPUT_SET|GPIO_PORT_PIOE|GPIO_PIN3)
 
 /* I2C Buses ***********************************************************************************/
 
-/* SAMV71-XULT I2C Configuration:
- * I2C0 (TWIHS0): All external sensors including GPS magnetometer (IST8310)
- *   PA3 - TWD0 (SDA)
- *   PA4 - TWCK0 (SCL)
+/* I2C0 (TWIHS0): PA3(SDA), PA4(SCL) — BMP388, BMM150, EEPROM
+ * I2C2 (TWIHS2): PD27(SDA), PD28(SCL) — GPS, Power Sensor
  */
-
-#define PX4_NUMBER_I2C_BUSES 1
-#define BOARD_NUMBER_I2C_BUSES 1
+#define PX4_NUMBER_I2C_BUSES 2
+#define BOARD_NUMBER_I2C_BUSES 2
 
 /* PWM Configuration ***********************************************************************************/
 
@@ -230,7 +197,7 @@
 #ifdef CONFIG_SAMV7_HSMCI0
 #  define HSMCI0_SLOTNO      0
 #  define HSMCI0_MINOR       0
-  /* Card Detect: PD18 disabled — pin used for UART4 RC input.
+  /* Card Detect: PD18 disabled — pin used for USART2 RTS (Telemetry 1).
    * SD card assumed always present (init.c passes 0,0 for CD).
    */
   /* #define GPIO_HSMCI0_CD  (GPIO_INPUT | GPIO_CFG_DEFAULT | GPIO_CFG_DEGLITCH | \
@@ -255,12 +222,21 @@
 
 #define PX4_GPIO_INIT_LIST { \
 		GPIO_nLED_BLUE,           \
+		GPIO_nLED_AMBER,          \
+		GPIO_nLED_RED,            \
 		GPIO_SPI0_CS_ICM45686,    \
-		GPIO_MB1_RST,             \
-		GPIO_EXT2_RST,            \
+		GPIO_SPI1_CS_IMU2,        \
+		GPIO_IMU1_DRDY,           \
+		GPIO_IMU2_DRDY,           \
 		GPIO_BTN_SAFETY,          \
 		GPIO_LED_SAFETY,          \
-		GPIO_nARMED_INIT,         \
+		GPIO_CAN0_STB,            \
+		GPIO_3V3_EN_PERIPH,       \
+		GPIO_5V_EN_PERIPH,        \
+		GPIO_nFLT_5V_PERIPH,      \
+		GPIO_nFLT_5V_TELE,        \
+		GPIO_EN_5V_TELE,          \
+		GPIO_EN_CRYPTO_RST,       \
 	}
 
 // Console buffer - ENABLED: lazy initialization implemented in console_buffer.cpp

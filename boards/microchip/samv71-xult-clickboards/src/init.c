@@ -276,6 +276,78 @@ sam_boardinitialize(void)
 {
 	board_on_reset(-1); /* Reset PWM first thing */
 
+	/* Boot indicator — 3 blinks on PA0 confirms clock init passed */
+	sam_configgpio(GPIO_nLED_AMBER);
+
+	for (int i = 0; i < 3; i++) {
+		sam_gpiowrite(GPIO_nLED_AMBER, false); /* ON */
+		up_mdelay(150);
+		sam_gpiowrite(GPIO_nLED_AMBER, true);  /* OFF */
+		up_mdelay(150);
+	}
+
+	/* Raw USART1 hardware test — bypass NuttX serial driver.
+	 * Sends "BOOT\r\n" directly to USART1 (PB4 TX, PA21 RX).
+	 * If you see this on terminal, wiring is correct.
+	 */
+	{
+		#define USART1_BASE  0x40028000
+		#define US_CR        0x0000  /* Control Register */
+		#define US_MR        0x0004  /* Mode Register */
+		#define US_BRGR      0x0020  /* Baud Rate Generator */
+		#define US_CSR       0x0014  /* Channel Status Register */
+		#define US_THR       0x001C  /* Transmit Holding Register */
+		#define US_CR_TXEN   (1 << 6)
+		#define US_CR_RXEN   (1 << 4)
+		#define US_CR_RSTRX  (1 << 2)
+		#define US_CR_RSTTX  (1 << 3)
+		#define US_CSR_TXRDY (1 << 1)
+		#define US_MR_CHRL_8 (3 << 6)
+		#define US_MR_PAR_NONE (4 << 9)
+		#define US_MR_NBSTOP_1 (0 << 12)
+		#define US_MR_USART_NORMAL (0 << 0)
+
+		/* Enable USART1 peripheral clock (PID 14) */
+		putreg32((1 << 14), 0x400E0610); /* PMC_PCER0 */
+
+		/* Configure PB4 as USART1 TXD (Peripheral D) */
+		sam_configgpio(GPIO_PERIPHD | GPIO_CFG_DEFAULT | GPIO_PORT_PIOB | GPIO_PIN4);
+		/* Configure PA21 as USART1 RXD (Peripheral A) */
+		sam_configgpio(GPIO_PERIPHA | GPIO_CFG_DEFAULT | GPIO_PORT_PIOA | GPIO_PIN21);
+
+		/* Reset and configure USART1 */
+		putreg32(US_CR_RSTRX | US_CR_RSTTX, USART1_BASE + US_CR);
+		/* Mode: normal, 8-bit, NO parity, 1 stop (8N1) */
+		putreg32(US_MR_USART_NORMAL | US_MR_CHRL_8 | US_MR_PAR_NONE | US_MR_NBSTOP_1, USART1_BASE + US_MR);
+		/* Baud rate: MCK / (16 * CD) = 150000000 / (16 * 81) = 115740 (~115200) */
+		putreg32(81, USART1_BASE + US_BRGR);
+		/* Enable TX and RX */
+		putreg32(US_CR_TXEN | US_CR_RXEN, USART1_BASE + US_CR);
+
+		/* Send "BOOT\r\n" */
+		const char *msg = "BOOT OK\r\n";
+		for (int i = 0; msg[i]; i++) {
+			while (!(getreg32(USART1_BASE + US_CSR) & US_CSR_TXRDY));
+			putreg32(msg[i], USART1_BASE + US_THR);
+		}
+
+		#undef USART1_BASE
+		#undef US_CR
+		#undef US_MR
+		#undef US_BRGR
+		#undef US_CSR
+		#undef US_THR
+		#undef US_CR_TXEN
+		#undef US_CR_RXEN
+		#undef US_CR_RSTRX
+		#undef US_CR_RSTTX
+		#undef US_CSR_TXRDY
+		#undef US_MR_CHRL_8
+		#undef US_MR_PAR_NONE
+		#undef US_MR_NBSTOP_1
+		#undef US_MR_USART_NORMAL
+	}
+
 	/* Zero out the nocache region (as it is NOLOAD) */
 	uint32_t *dest;
 	for (dest = &_s_nocache; dest < &_e_nocache; ) {

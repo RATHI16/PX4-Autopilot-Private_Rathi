@@ -56,7 +56,9 @@ extern void led_toggle(int led);
 __END_DECLS
 
 static uint32_t g_ledmap[] = {
-	GPIO_nLED_BLUE,                     // Indexed by LED_BLUE (PA23)
+	GPIO_nLED_BLUE,    // LED_BLUE   — PC17
+	GPIO_nLED_AMBER,   // LED_AMBER  — PA0
+	GPIO_nLED_RED,     // LED_RED    — PD10
 };
 
 __EXPORT void led_init(void)
@@ -68,16 +70,14 @@ __EXPORT void led_init(void)
 
 static void phy_set_led(int led, bool state)
 {
-	/* Drive Low to switch on */
-	if (led == 0) {
+	if (led >= 0 && led < (int)(sizeof(g_ledmap) / sizeof(g_ledmap[0]))) {
 		sam_gpiowrite(g_ledmap[led], !state);
 	}
 }
 
 static bool phy_get_led(int led)
 {
-	/* If Low it is on */
-	if (led == 0) {
+	if (led >= 0 && led < (int)(sizeof(g_ledmap) / sizeof(g_ledmap[0]))) {
 		return !sam_gpioread(g_ledmap[led]);
 	}
 

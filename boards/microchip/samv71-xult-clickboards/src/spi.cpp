@@ -60,6 +60,15 @@ constexpr px4_spi_bus_t px4_spi_buses[SPI_BUS_MAX_BUS_ITEMS] = {
 		.is_external = false,
 		.requires_locking = false,
 	},
+	{
+		.devices = {
+			make_spidev(DRV_IMU_DEVTYPE_ICM45686, GPIO_SPI1_CS_IMU2, 0),
+		},
+		.power_enable_gpio = 0,
+		.bus = static_cast<int8_t>(SPI::Bus::SPI1),
+		.is_external = false,
+		.requires_locking = false,
+	},
 };
 
 /* SPI chip select and status functions required by NuttX SAMV7 */
@@ -101,9 +110,7 @@ uint8_t sam_spi0status(struct spi_dev_s *dev, uint32_t devid)
 
 void sam_spi1select(uint32_t devid, bool selected)
 {
-	/* SPI1 unconnected */
-	(void)devid;
-	(void)selected;
+	sam_spixselect(SPI::Bus::SPI1, devid, selected);
 }
 
 uint8_t sam_spi1status(struct spi_dev_s *dev, uint32_t devid)

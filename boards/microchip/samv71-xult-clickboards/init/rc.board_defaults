@@ -229,9 +229,9 @@ param set-default NAV_RCL_ACT 2
 param set-default NAV_DLL_ACT 0
 param set-default COM_RC_LOSS_T 2.0
 
-# ── GPS (Disabled) ────────────────────────────
+# ── GPS — UART2 (PD25 RX, PD26 TX) on ttyS3 ──
 param set-default GPS_1_CONFIG 201
-param set-default SER_GPS1_BAUD 38400
+param set-default SER_GPS1_BAUD 115200
 
 # ── Dataman ───────────────────────────────────
 dataman start -f /fs/mtd_waypoints

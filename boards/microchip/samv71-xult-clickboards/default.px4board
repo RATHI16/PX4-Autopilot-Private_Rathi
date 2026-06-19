@@ -6,19 +6,20 @@ CONFIG_BOARD_PARAM_BACKUP_FILE="/fs/microsd/parameters_backup.bson"
 # CONFIG_BOARD_CONSTRAINED_FLASH is not set
 # CONFIG_BOARD_NO_HELP is not set
 #CONFIG_BOARD_EXTERNAL_METADATA=y
-CONFIG_BOARD_SERIAL_GPS1="/dev/ttyS2"
+CONFIG_BOARD_SERIAL_GPS1="/dev/ttyS3"
 CONFIG_BOARD_SERIAL_TEL1="/dev/ttyACM0"
 CONFIG_BOARD_SERIAL_TEL2="/dev/ttyS1"
-CONFIG_BOARD_SERIAL_RC="/dev/ttyS3"
+CONFIG_BOARD_SERIAL_TEL3="/dev/ttyS4"
+CONFIG_BOARD_SERIAL_RC="/dev/ttyS2"
 
 # ADC - Battery monitoring via AFEC0 (PD30=voltage, PA18=current)
 CONFIG_DRIVERS_ADC_BOARD_ADC=y
 
-# Safety Button - SW0 (PA9) with LED1 (PC9)
+# Safety Button - PE4 with LED PE3
 CONFIG_DRIVERS_SAFETY_BUTTON=y
 
 # USB CDC/ACM
-CONFIG_DRIVERS_CDCACM_AUTOSTART=y  # RE-ENABLED - dataman_client issue resolved
+# CONFIG_DRIVERS_CDCACM_AUTOSTART is not set  # Disabled - using USART1 console, USB only for MAVLink when connected
 
 # ESC/Motor Outputs
 CONFIG_DRIVERS_DSHOT=y
