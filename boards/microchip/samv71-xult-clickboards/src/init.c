@@ -457,6 +457,20 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 	}
 #endif
 
+#ifdef CONFIG_SAMV7_TWIHS2
+	struct i2c_master_s *i2c2 = sam_i2cbus_initialize(2);
+	if (i2c2 == NULL) {
+		printf("[boot] ERROR: Failed to initialize I2C bus 2\n");
+	} else {
+		int ret = i2c_register(i2c2, 2);
+		if (ret < 0) {
+			printf("[boot] ERROR: Failed to register I2C bus 2: %d\n", ret);
+		} else {
+			printf("[boot] I2C bus 2 ready (/dev/i2c2)\n");
+		}
+	}
+#endif
+
 
 	drv_led_start();
 

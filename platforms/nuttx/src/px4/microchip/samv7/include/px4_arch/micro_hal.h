@@ -91,6 +91,13 @@ __BEGIN_DECLS
  */
 #define px4_savepanic(fileno, context, length)  (0)
 
+/* I2C bus configuration for SAMV7
+ * SAMV71 has 3 TWIHS (I2C) peripherals: TWIHS0, TWIHS1, TWIHS2
+ * PX4 bus numbering: bus 1 = TWIHS0, bus 2 = TWIHS1, bus 3 = TWIHS2
+ */
+#define PX4_NUMBER_I2C_BUSES   3
+#define PX4_I2C_BUS_CLOCK_INIT {100000, 100000, 100000}
+
 #define PX4_BUS_OFFSET       1                  /* PX4 uses 1-based, NuttX SAMV7 uses 0-based */
 #define px4_spibus_initialize(bus_num_1based)   sam_spibus_initialize((bus_num_1based) - 1)
 

@@ -132,7 +132,6 @@
 /* I2C0 (TWIHS0): PA3(SDA), PA4(SCL) — BMP388, BMM150, EEPROM
  * I2C2 (TWIHS2): PD27(SDA), PD28(SCL) — GPS, Power Sensor
  */
-#define PX4_NUMBER_I2C_BUSES 2
 #define BOARD_NUMBER_I2C_BUSES 2
 
 /* PWM Configuration ***********************************************************************************/
@@ -154,7 +153,7 @@
  * NOTE: TC0 CH0 reserved for HRT. PC29 freed from RC Input for ch7 PWM.
  */
 
-#define DIRECT_PWM_OUTPUT_CHANNELS  8
+#define DIRECT_PWM_OUTPUT_CHANNELS  4
 
 /* PC29 (TC5 TIOA) is now used for Motor 3 PWM output - RC input disabled */
 /* #define GPIO_RC_INPUT    (GPIO_PERIPHB | GPIO_CFG_DEFAULT | GPIO_PORT_PIOC | GPIO_PIN29) */
@@ -243,14 +242,10 @@
 // (ensure_initialized() with double-checked locking avoids static init issues)
 #define BOARD_ENABLE_CONSOLE_BUFFER
 
-/* Number of IO timers used for PWM (1 PWMC + 4 TC = 5 timers, 8 channels)
- * index 0: PWM0 (PWMC)      — ch1..4: PB0, PA2, PC19, PC13
- * index 1: TC0 CH1 (Timer1) — ch5: PA15
- * index 2: TC1 CH0 (Timer3) — ch6: PC23
- * index 3: TC1 CH2 (Timer5) — ch7: PC29
- * index 4: TC2 CH0 (Timer6) — ch8: PC5
+/* Number of IO timers used for PWM (1 PWMC module, 4 channels)
+ * index 0: PWM0 (PWMC) — ch1..4: PB0, PA2, PC19, PC13
  */
-#define BOARD_NUM_IO_TIMERS 5
+#define BOARD_NUM_IO_TIMERS 1
 
 __BEGIN_DECLS
 

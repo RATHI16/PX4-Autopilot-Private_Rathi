@@ -9,7 +9,7 @@ if sercon; then
 fi
 
 # MAVLink on USB
-mavlink start -d /dev/ttyACM0 -m normal -r 57600 -x
+mavlink start -d /dev/ttyACM0 -b 57600 -r 57600 -x
 
 # Telemetry 1 — USART2 (PD15/PD16) on ttyS4
 echo "Starting MAVLink TEL1 on /dev/ttyS4"

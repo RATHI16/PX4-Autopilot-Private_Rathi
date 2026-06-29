@@ -1,0 +1,5 @@
+menuconfig DRIVERS_POWER_MONITOR_PAC1711
+	bool "pac1711"
+	default n
+	---help---
+		Enable support for PAC1711 I2C power monitor (Microchip)

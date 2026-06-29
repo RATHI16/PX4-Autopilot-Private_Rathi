@@ -12,8 +12,15 @@
 #   - IST8310 - not populated
 #------------------------------------------------------------------------------
 
+# Wait for SPI bus to be ready
+sleep 1
+
 # ICM-45686 IMU2 (accel + gyro) - SPI bus 2 (SPI1)
-icm45686 -s -b 2 start
+if ! icm45686 -s -b 2 start
+then
+    sleep 1
+    icm45686 -s -b 2 start
+fi
 
 # BMM150 Magnetometer - I2C bus 1 (TWIHS0), address 0x10
 bmm150 -X -b 1 start
