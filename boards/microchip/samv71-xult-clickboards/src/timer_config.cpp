@@ -10,8 +10,7 @@
  *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
+ *    the distribution.
  * 3. Neither the name PX4 nor the names of its contributors may be
  *    used to endorse or promote products derived from this software
  *    without specific prior written permission.
@@ -34,53 +33,40 @@
 /**
  * @file timer_config.cpp
  *
- * Configuration data for the SAMV71 PWM driver using PWMC (PWM Controller).
+ * Mixed PWMC + TC PWM configuration for SAMV71-XULT — 8 channels total.
  *
- * SAMV71-XULT PWMC Output Configuration:
- *   Motor 1 (CH0): PB0  - GPIO_PWMC0_H0 (Peripheral A) - EXT1 Pin 13
- *   Motor 2 (CH1): PA2  - GPIO_PWMC0_H1 (Peripheral A) - EXT2 Pin 9
- *   Motor 3 (CH2): PC19 - GPIO_PWMC0_H2 (Peripheral B) - EXT2 Pin 7
- *   Motor 4 (CH3): PC13 - GPIO_PWMC0_H3 (Peripheral B) - EXT2 Pin 4
+ * io_timers[0]: PWM0 (PWMC)      — ch1..4: PB0, PA2, PC19, PC13
+ * io_timers[1]: TC0 CH1 (Timer1) — ch5: PA15 TIOA
+ * io_timers[2]: TC1 CH0 (Timer3) — ch6: PC23 TIOA
+ * io_timers[3]: TC1 CH2 (Timer5) — ch7: PC29 TIOA
+ * io_timers[4]: TC2 CH0 (Timer6) — ch8: PC5  TIOA
  *
- * Clock Configuration:
- *   MCK = 150MHz, CPRE = 3 (MCK/8 = 18.75MHz)
- *   For 400Hz PWM: CPRD = 46875
+ * PWMC clock: MCK/8 = 18.75 MHz, 400 Hz → CPRD = 46875
+ * TC clock:   MCK/8 = 18.75 MHz, 400 Hz → RC   = 46875
  *
- * NOTE: TC0 CH0 is still used for HRT (high-resolution timer).
- *       TC1 CH2 (TC5, PC29) is reserved for RC Input capture.
- *
- * CRITICAL: PA7 was moved to PC13 because PA7 conflicts with XIN32
- *           (32.768 kHz slow crystal input) when BOARD_HAVE_SLOWXTAL=1.
+ * NOTE: TC0 CH0 (PID 23) is used by HRT — PA0/PA1 are off-limits.
+ *       PC29 (TC5) was reserved for RC Input; now used for ch7 PWM.
  */
 
 #include <px4_arch/io_timer_hw_description.h>
 
-/**
- * PWM Controller (PWMC) module configuration
- *
- * Using PWM0 module for all 4 motor outputs.
- * PWM0 base address: 0x40020000, PID: 31
- */
 const io_timers_t io_timers[MAX_IO_TIMERS] = {
-	initIOPWMTimer(PWM::PWM0),
+	initIOPWMTimer(PWM::PWM0),       /* index 0: PWMC PWM0 — ch1..4 */
+	initIOTCTimer(Timer::Timer1),    /* index 1: TC0 CH1 (PID 24) — PA15 */
+	initIOTCTimer(Timer::Timer3),    /* index 2: TC1 CH0 (PID 26) — PC23 */
+	initIOTCTimer(Timer::Timer5),    /* index 3: TC1 CH2 (PID 28) — PC29 */
+	initIOTCTimer(Timer::Timer6),    /* index 4: TC2 CH0 (PID 47) — PC5  */
 };
 
-/**
- * PWMC channel to GPIO pin mapping
- *
- * Order determines motor number (index 0 = Motor 1, etc.)
- * Peripheral function (A or B) depends on specific pin - verified in samv71_pinmap.h
- *
- * Channel 0 (Motor 1): PWM0 CH0 -> PB0  (Peripheral A) - EXT1 Pin 13
- * Channel 1 (Motor 2): PWM0 CH1 -> PA2  (Peripheral A) - EXT2 Pin 9
- * Channel 2 (Motor 3): PWM0 CH2 -> PC19 (Peripheral B) - EXT2 Pin 7
- * Channel 3 (Motor 4): PWM0 CH3 -> PC13 (Peripheral B) - EXT2 Pin 4
- */
 const timer_io_channels_t timer_io_channels[MAX_TIMER_IO_CHANNELS] = {
-	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel0}, {GPIO::PortB, GPIO::Pin0},  PWMCPeripheral::A),  /* Motor 1 - PB0 */
-	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel1}, {GPIO::PortA, GPIO::Pin2},  PWMCPeripheral::A),  /* Motor 2 - PA2 */
-	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel2}, {GPIO::PortC, GPIO::Pin19}, PWMCPeripheral::B),  /* Motor 3 - PC19 */
-	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel3}, {GPIO::PortC, GPIO::Pin13}, PWMCPeripheral::B),  /* Motor 4 - PC13 */
+	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel0}, {GPIO::PortB, GPIO::Pin0},  PWMCPeripheral::A),  /* ch1 - PB0  */
+	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel1}, {GPIO::PortA, GPIO::Pin2},  PWMCPeripheral::A),  /* ch2 - PA2  */
+	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel2}, {GPIO::PortC, GPIO::Pin19}, PWMCPeripheral::B),  /* ch3 - PC19 */
+	initIOPWMChannel(io_timers, {PWM::PWM0, PWM::Channel3}, {GPIO::PortC, GPIO::Pin13}, PWMCPeripheral::B),  /* ch4 - PC13 */
+	initIOTCChannelTIOA(io_timers, 1, {GPIO::PortA, GPIO::Pin15}),                                           /* ch5 - PA15 TIOA */
+	initIOTCChannelTIOA(io_timers, 2, {GPIO::PortC, GPIO::Pin23}),                                           /* ch6 - PC23 TIOA */
+	initIOTCChannelTIOA(io_timers, 3, {GPIO::PortC, GPIO::Pin29}),                                           /* ch7 - PC29 TIOA */
+	initIOTCChannelTIOA(io_timers, 4, {GPIO::PortC, GPIO::Pin5}),                                            /* ch8 - PC5  TIOA */
 };
 
 const io_timers_channel_mapping_t io_timers_channel_mapping =

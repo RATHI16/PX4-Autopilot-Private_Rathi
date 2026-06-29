@@ -89,18 +89,9 @@ static struct sam_hsmci_state_s g_hsmci0 =
 
 static bool sam_cardinserted_internal(struct sam_hsmci_state_s *state)
 {
-  /* If no card detect GPIO configured, assume card is always present */
-  if (state->cdcfg == 0) {
-      return true;
-  }
-
-  bool inserted;
-
-  /* Get the state of the PIO pin */
-
-  inserted = sam_gpioread(state->cdcfg);
-  finfo("Slot %d inserted: %s\n", state->slotno, inserted ? "NO" : "YES");
-  return !inserted;
+  /* No card detect pin - SD card always present on this board */
+  printf("[hsmci] Card always present (no CD pin)\n");
+  return true;
 }
 
 /****************************************************************************
@@ -195,22 +186,24 @@ int sam_hsmci_initialize(int slotno, int minor, gpio_pinset_t cdcfg,
   struct sam_hsmci_state_s *state;
   int ret;
 
+  printf("[hsmci] sam_hsmci_initialize ENTRY slotno=%d minor=%d\n", slotno, minor);
+
   /* Get the static HSMI description */
 
   state = sam_hsmci_state(slotno);
   if (state == NULL)
     {
+      printf("[hsmci] ERROR: No state for slotno %d\n", slotno);
       return -EINVAL;
     }
 
   state->cdcfg = cdcfg;
   state->cdirq = cdirq;
 
-  /* Initialize card-detect GPIO (if configured) */
+  /* Initialize card-detect, write-protect, and power enable PIOs */
 
-  if (state->cdcfg != 0) {
-      sam_configgpio(state->cdcfg);
-  }
+  sam_configgpio(state->cdcfg);
+  printf("[hsmci] GPIO configured, calling sdio_initialize...\n");
 
   /* Mount the SDIO-based MMC/SD block driver */
 
@@ -219,44 +212,56 @@ int sam_hsmci_initialize(int slotno, int minor, gpio_pinset_t cdcfg,
   state->hsmci = sdio_initialize(slotno);
   if (state->hsmci == NULL)
     {
+      printf("[hsmci] ERROR: sdio_initialize returned NULL!\n");
       return -ENODEV;
     }
+  printf("[hsmci] sdio_initialize OK\n");
 
   /* Get initial card state */
-  state->cd = sam_cardinserted_internal(state);
+state->cd = true;
+printf("[hsmci] No CD pin - assuming card always present\n");
 
   /* Set initial presence BEFORE mmcsd_slotinitialize so presence check succeeds */
   sdio_mediachange(state->hsmci, state->cd);
+  printf("[hsmci] Called sdio_mediachange (before slotinit)\n");
 
   /* Bind SDIO interface to MMC/SD driver - this registers the callback */
+  printf("[hsmci] Calling mmcsd_slotinitialize...\n");
   ret = mmcsd_slotinitialize(minor, state->hsmci);
+  printf("[hsmci] mmcsd_slotinitialize returned: %d\n", ret);
 
   if (ret != OK)
     {
+      printf("[hsmci] ERROR: mmcsd_slotinitialize failed: %d\n", ret);
       if (ret != -ENODEV)
         {
           return ret;
         }
     }
 
-  /* Call sdio_mediachange AGAIN to trigger the callback now that it's registered.
-   * First call sets cdstatus so presence check passes.
-   * Second call triggers mmcsd_mediachange -> mmcsd_probe. */
+  /* CRITICAL: Call sdio_mediachange AGAIN to trigger the callback now that it's registered
+   * First call sets cdstatus so presence check passes
+   * Second call triggers mmcsd_mediachange -> mmcsd_probe */
   if (state->cd)
     {
+      printf("[hsmci] Triggering card probe via mediachange...\n");
       sdio_mediachange(state->hsmci, false);  /* Simulate removal */
-      up_mdelay(10);
-      sdio_mediachange(state->hsmci, true);   /* Simulate insertion - triggers probe */
+      up_mdelay(10);  /* Small delay */
+      printf("[hsmci] Calling sdio_mediachange(true) - this triggers card identification!\n");
+      sdio_mediachange(state->hsmci, true);   /* Simulate insertion - triggers probe! */
+      printf("[hsmci] sdio_mediachange returned (card probe should be complete)\n");
     }
-
-  /* Configure card detect interrupts (only if CD GPIO is configured) */
-  if (state->cdcfg != 0 && state->cdirq != 0)
+  else
     {
-      sam_gpioirq(state->cdcfg);
-      irq_attach(state->cdirq, sam_hsmci_cardetect_handler, (void *)state);
-      sam_gpioirqenable(state->cdirq);
+      printf("[hsmci] Card not present, skipping probe\n");
     }
 
+  /* Configure card detect interrupts for future insertion/removal events */
+  sam_gpioirq(state->cdcfg);
+  irq_attach(state->cdirq, sam_hsmci_cardetect_handler, (void *)state);
+  sam_gpioirqenable(state->cdirq);
+
+  printf("[hsmci] sam_hsmci_initialize completed successfully\n");
   return OK;
 }
 

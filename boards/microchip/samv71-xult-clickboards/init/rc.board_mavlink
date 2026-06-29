@@ -1,32 +1,28 @@
 #!/bin/sh
 #
-# MAVLink enabled on USB CDC/ACM
-# Note: MAV_0_CONFIG 101 set in rc.board_defaults
-# Create USB CDC/ACM device (/dev/ttyACM0) before rc.serial starts MAVLink.
-# Without this, rc.serial fails with "Device /dev/ttyACM0 does not exist"
-# because cdcacm_autostart runs AFTER rc.serial in the rcS boot sequence.
+# MAVLink configuration for Custom FC Board
+#
 
-# Start USB CDC/ACM
-sercon
-
-# Poll for /dev/ttyACM0 to appear - max 5 seconds
-i=0
-while [ $i -lt 5 ]; do
-    if [ -e /dev/ttyACM0 ]; then
-        echo "INFO: /dev/ttyACM0 ready after ${i}s"
-        break
-    fi
-    echo "INFO: Waiting for /dev/ttyACM0... attempt $((i+1))/5"
-    sleep 1
-    i=$((i+1))
-done
-
-# Final check
-if [ ! -e /dev/ttyACM0 ]; then
-    echo "WARN: /dev/ttyACM0 not ready after 5s - MAVLink may fail"
-    # Try sercon again
-    sercon
-    sleep 1
+# USB CDC/ACM — primary GCS link
+if sercon; then
+    echo "INFO: USB CDC/ACM registered"
 fi
 
-echo "INFO: Board mavlink config - USB CDC/ACM enabled"
+# MAVLink on USB
+mavlink start -d /dev/ttyACM0 -b 57600 -r 57600 -x
+
+# Telemetry 1 — USART2 (PD15/PD16) on ttyS4
+echo "Starting MAVLink TEL1 on /dev/ttyS4"
+mavlink start -d /dev/ttyS4 -b 57600 -m config -r 2880 -x -f
+
+# Telemetry 2 — UART0 (PA9/PA10) on ttyS1
+echo "Starting MAVLink TEL2 on /dev/ttyS1"
+mavlink start -d /dev/ttyS1 -b 57600 -m config -r 2880 -x -f
+
+# GPS — UART2 (PD25/PD26) on ttyS3
+echo "Starting Main GPS on /dev/ttyS3"
+gps start -d /dev/ttyS3 -b 115200
+
+# RC Input — UART1 (PA5) on ttyS2
+echo "Starting RC Input Driver on /dev/ttyS2"
+rc_input start -d /dev/ttyS2

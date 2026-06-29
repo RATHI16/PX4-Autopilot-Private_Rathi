@@ -126,25 +126,43 @@ static int samv71_sdcard_initialize(void)
 {
 	int ret;
 
-	/* Initialize HSMCI — card detect disabled (PD18 used by UART4/RC SBUS) */
+	printf("[sdcard] samv71_sdcard_initialize ENTRY\n");
+
+	/* Initialize HSMCI with board-specific glue */
 	ret = sam_hsmci_initialize(HSMCI0_SLOTNO, HSMCI0_MINOR, 0, 0);
 
 	if (ret < 0) {
-		syslog(LOG_ERR, "[sdcard] sam_hsmci_initialize failed: %d\n", ret);
+		printf("[sdcard] sam_hsmci_initialize FAILED: %d\n", ret);
 		return ret;
 	}
 
-	/* Wait for async card probe to complete (up to 500ms) */
-	struct stat buf;
-	int timeout_ms = 500;
+	printf("[sdcard] sam_hsmci_initialize returned OK\n");
 
-	while (stat("/dev/mmcsd0", &buf) < 0 && timeout_ms > 0) {
-		up_mdelay(50);
-		timeout_ms -= 50;
+	/* Wait for card initialization to complete.
+	 * Card initialization happens asynchronously through callbacks after
+	 * sam_hsmci_initialize returns. We need to wait for this to complete
+	 * before rcS tries to mount the filesystem.
+	 */
+	printf("[sdcard] Waiting 1000ms for async card init...\n");
+	up_mdelay(1000);
+
+	printf("[sdcard] Wait complete, creating mount points...\n");
+
+	/* Create mount point directory for rcS */
+	(void)mkdir("/fs", 0777);
+	(void)mkdir("/fs/microsd", 0777);
+
+	/* Mount the SD card */
+	printf("[sdcard] Mounting /dev/mmcsd0 to /fs/microsd...\n");
+	ret = mount("/dev/mmcsd0", "/fs/microsd", "vfat", 0, NULL);
+	if (ret < 0) {
+		printf("[sdcard] Mount failed: %d\n", errno);
+	} else {
+		printf("[sdcard] Mount SUCCESS\n");
 	}
 
-	/* Do NOT mount here — let rcS handle mounting so STORAGE_AVAILABLE is set correctly */
-	return ret;
+	printf("[sdcard] samv71_sdcard_initialize complete\n");
+	return OK;
 }
 #endif /* CONFIG_SAMV7_HSMCI0 */
 
@@ -258,11 +276,77 @@ sam_boardinitialize(void)
 {
 	board_on_reset(-1); /* Reset PWM first thing */
 
-	/* Enable DWT cycle counter for perf/critmon — must be early,
-	 * before any code that uses up_perf_gettime() (SCHED_CRITMONITOR).
-	 * BOARD_CPU_FREQUENCY (300 MHz) is the DWT CYCCNT clock source.
+	/* Boot indicator — 3 blinks on PA0 confirms clock init passed */
+	sam_configgpio(GPIO_nLED_AMBER);
+
+	for (int i = 0; i < 3; i++) {
+		sam_gpiowrite(GPIO_nLED_AMBER, false); /* ON */
+		up_mdelay(150);
+		sam_gpiowrite(GPIO_nLED_AMBER, true);  /* OFF */
+		up_mdelay(150);
+	}
+
+	/* Raw USART1 hardware test — bypass NuttX serial driver.
+	 * Sends "BOOT\r\n" directly to USART1 (PB4 TX, PA21 RX).
+	 * If you see this on terminal, wiring is correct.
 	 */
-	up_perf_init((void *)(uintptr_t)BOARD_CPU_FREQUENCY);
+	{
+		#define USART1_BASE  0x40028000
+		#define US_CR        0x0000  /* Control Register */
+		#define US_MR        0x0004  /* Mode Register */
+		#define US_BRGR      0x0020  /* Baud Rate Generator */
+		#define US_CSR       0x0014  /* Channel Status Register */
+		#define US_THR       0x001C  /* Transmit Holding Register */
+		#define US_CR_TXEN   (1 << 6)
+		#define US_CR_RXEN   (1 << 4)
+		#define US_CR_RSTRX  (1 << 2)
+		#define US_CR_RSTTX  (1 << 3)
+		#define US_CSR_TXRDY (1 << 1)
+		#define US_MR_CHRL_8 (3 << 6)
+		#define US_MR_PAR_NONE (4 << 9)
+		#define US_MR_NBSTOP_1 (0 << 12)
+		#define US_MR_USART_NORMAL (0 << 0)
+
+		/* Enable USART1 peripheral clock (PID 14) */
+		putreg32((1 << 14), 0x400E0610); /* PMC_PCER0 */
+
+		/* Configure PB4 as USART1 TXD (Peripheral D) */
+		sam_configgpio(GPIO_PERIPHD | GPIO_CFG_DEFAULT | GPIO_PORT_PIOB | GPIO_PIN4);
+		/* Configure PA21 as USART1 RXD (Peripheral A) */
+		sam_configgpio(GPIO_PERIPHA | GPIO_CFG_DEFAULT | GPIO_PORT_PIOA | GPIO_PIN21);
+
+		/* Reset and configure USART1 */
+		putreg32(US_CR_RSTRX | US_CR_RSTTX, USART1_BASE + US_CR);
+		/* Mode: normal, 8-bit, NO parity, 1 stop (8N1) */
+		putreg32(US_MR_USART_NORMAL | US_MR_CHRL_8 | US_MR_PAR_NONE | US_MR_NBSTOP_1, USART1_BASE + US_MR);
+		/* Baud rate: MCK / (16 * CD) = 150000000 / (16 * 81) = 115740 (~115200) */
+		putreg32(81, USART1_BASE + US_BRGR);
+		/* Enable TX and RX */
+		putreg32(US_CR_TXEN | US_CR_RXEN, USART1_BASE + US_CR);
+
+		/* Send "BOOT\r\n" */
+		const char *msg = "BOOT OK\r\n";
+		for (int i = 0; msg[i]; i++) {
+			while (!(getreg32(USART1_BASE + US_CSR) & US_CSR_TXRDY));
+			putreg32(msg[i], USART1_BASE + US_THR);
+		}
+
+		#undef USART1_BASE
+		#undef US_CR
+		#undef US_MR
+		#undef US_BRGR
+		#undef US_CSR
+		#undef US_THR
+		#undef US_CR_TXEN
+		#undef US_CR_RXEN
+		#undef US_CR_RSTRX
+		#undef US_CR_RSTTX
+		#undef US_CSR_TXRDY
+		#undef US_MR_CHRL_8
+		#undef US_MR_PAR_NONE
+		#undef US_MR_NBSTOP_1
+		#undef US_MR_USART_NORMAL
+	}
 
 	/* Zero out the nocache region (as it is NOLOAD) */
 	uint32_t *dest;
@@ -306,18 +390,32 @@ sam_boardinitialize(void)
 
 __EXPORT int board_app_initialize(uintptr_t arg)
 {
+	/* Use printf for early debug - goes directly to console */
+	printf("[boot] SAMV71 board_app_initialize ENTRY\n");
+
+	/* Note: MPU nocache region is configured in sam_boardinitialize()
+	 * BEFORE the MPU is enabled and D-cache is turned on.
+	 */
+
 	px4_platform_init();
 
-	/* Initialize DMA allocator BEFORE SD card — async probe uses DMA from nocache */
+	printf("[boot] px4_platform_init done\n");
+
+	/* IMPORTANT: Initialize DMA allocator BEFORE SD card!
+	 * The SD card async probe uses DMA buffers from the nocache region.
+	 */
+	printf("[boot] Initializing DMA allocator...\n");
 	if (board_dma_alloc_init() < 0) {
-		syslog(LOG_ERR, "[boot] DMA alloc init failed\n");
+		printf("[boot] DMA alloc init FAILED!\n");
+	} else {
+		printf("[boot] DMA alloc init OK\n");
 	}
 
 #ifdef CONFIG_SAMV7_QSPI_SPI_MODE
 	int qspi_ret = board_qspi_flash_init();
 
 	if (qspi_ret < 0) {
-		syslog(LOG_ERR, "[boot] QSPI flash init failed: %d\n", qspi_ret);
+		printf("[boot] QSPI flash init failed: %d (continuing)\n", qspi_ret);
 
 	} else {
 		struct mtd_dev_s *qspi_mtd = board_get_qspi_mtd();
@@ -326,7 +424,7 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 			int part_ret = board_qspi_create_partitions(qspi_mtd);
 
 			if (part_ret < 0) {
-				syslog(LOG_ERR, "[boot] QSPI partition setup failed: %d\n", part_ret);
+				printf("[boot] QSPI partition setup failed: %d (continuing)\n", part_ret);
 			}
 		}
 	}
@@ -334,26 +432,45 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 #endif
 
 #ifdef CONFIG_SAMV7_HSMCI0
-	if (samv71_sdcard_initialize() < 0) {
-		syslog(LOG_ERR, "[boot] SD initialization failed\n");
+	printf("[boot] Starting HSMCI (SD card)...\n");
+	int sd_ret = samv71_sdcard_initialize();
+	printf("[boot] samv71_sdcard_initialize returned: %d\n", sd_ret);
+	if (sd_ret < 0) {
+		printf("[boot] SD initialization failed (continuing)\n");
 	}
+#else
+	printf("[boot] CONFIG_SAMV7_HSMCI0 NOT defined - SD card disabled!\n");
 #endif
 
 	/* Initialize I2C buses - must be after px4_platform_init */
 #ifdef CONFIG_SAMV7_TWIHS0
 	struct i2c_master_s *i2c0 = sam_i2cbus_initialize(0);
-
 	if (i2c0 == NULL) {
-		syslog(LOG_ERR, "[boot] Failed to initialize I2C bus 0\n");
-
+		printf("[boot] ERROR: Failed to initialize I2C bus 0\n");
 	} else {
 		int ret = i2c_register(i2c0, 0);
-
 		if (ret < 0) {
-			syslog(LOG_ERR, "[boot] Failed to register I2C bus 0: %d\n", ret);
+			printf("[boot] ERROR: Failed to register I2C bus 0: %d\n", ret);
+		} else {
+			printf("[boot] I2C bus 0 ready (/dev/i2c0)\n");
 		}
 	}
 #endif
+
+#ifdef CONFIG_SAMV7_TWIHS2
+	struct i2c_master_s *i2c2 = sam_i2cbus_initialize(2);
+	if (i2c2 == NULL) {
+		printf("[boot] ERROR: Failed to initialize I2C bus 2\n");
+	} else {
+		int ret = i2c_register(i2c2, 2);
+		if (ret < 0) {
+			printf("[boot] ERROR: Failed to register I2C bus 2: %d\n", ret);
+		} else {
+			printf("[boot] I2C bus 2 ready (/dev/i2c2)\n");
+		}
+	}
+#endif
+
 
 	drv_led_start();
 
@@ -361,16 +478,10 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 	led_on(LED_GREEN); // Indicate Power
 	led_off(LED_BLUE);
 
-	/* HAS_PROGMEM disabled — progmem_dump_initialize() hangs on SAMV7.
-	 * board_hardfault_init() is a no-op without HAS_PROGMEM or HAS_BBSRAM,
-	 * but skip the call entirely to avoid confusion.
-	 */
-#ifdef HAS_PROGMEM
 	if (board_hardfault_init(2, true) != 0) {
 		led_on(LED_RED);
 		syslog(LOG_ERR, "[boot] Hardfault init FAILED\n");
 	}
-#endif
 
 	syslog(LOG_INFO, "[boot] Parameters on /fs/mtd_params (QSPI), backup on SD\n");
 

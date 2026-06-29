@@ -60,3 +60,4 @@ target_link_libraries(drivers_board
 		nuttx_drivers
 		px4_layer
 )
+

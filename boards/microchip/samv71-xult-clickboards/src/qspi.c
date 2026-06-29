@@ -50,9 +50,8 @@
  *   ftl_initialize(minor, part_mtd)     -> /dev/mtdblockN
  *   bchdev_register(blk, char, false)   -> /fs/mtd_params, /fs/mtd_waypoints
  *
- * Note: SAMV71-XULT board has S25FL116K (Spansion, JEDEC 01 40 15, 2MB)
- * not SST26VF064B as documented. The W25 driver handles S25FL1xx via
- * compatible JEDEC command set (same memory type 0x40 as W25Q series).
+ * Custom FC board has SST26VF032BA (Microchip, JEDEC bf 26 42, 4MB).
+ * Uses NuttX SST26 MTD driver via SPI compatibility mode.
  */
 
 #include <nuttx/config.h>
@@ -155,7 +154,7 @@ int board_qspi_flash_init(void)
 	struct mtd_geometry_s geo;
 	int ret;
 
-	printf("[boot] QSPI flash init: S25FL116K via SPI mode\n");
+	printf("[boot] QSPI flash init: SST26VF032BA via SPI mode\n");
 
 	/* Step 1: Initialize QSPI peripheral in SPI compatibility mode */
 
@@ -196,16 +195,15 @@ int board_qspi_flash_init(void)
 		}
 	}
 
-	/* Step 3: Initialize W25 MTD driver.
-	 * Handles S25FL116K (Spansion, JEDEC 01 40 15) via compatible
-	 * command set -- same memory type 0x40 as Winbond W25Q series.
-	 * Returns NULL if JEDEC mismatch.
+	/* Step 3: Initialize SST26 MTD driver.
+	 * Handles SST26VF032BA (Microchip, JEDEC bf 26 42, 4MB).
+	 * The driver issues Global Block Protection Unlock automatically.
 	 */
 
-	mtd = w25_initialize(spi);
+	mtd = sst26_initialize_spi(spi, (uint16_t)0);
 
 	if (mtd == NULL) {
-		printf("[boot] W25/S25FL init failed (JEDEC mismatch or SPI error)\n");
+		printf("[boot] SST26 init failed (JEDEC mismatch or SPI error)\n");
 		return -ENODEV;
 	}
 

@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2024 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2024-2025 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -30,8 +30,16 @@
 #
 ############################################################################
 
-px4_add_library(arch_io_pins
-	io_timer_pwmc.c
-	pwm_servo.c
+if(CONFIG_DRIVERS_DSHOT)
+
+px4_add_library(arch_dshot
+	dshot.c
 )
-target_link_libraries(arch_io_pins PRIVATE drivers_board)
+
+target_compile_options(arch_dshot
+	PRIVATE
+		${MAX_CUSTOM_OPT_LEVEL}
+		-Wno-cast-align
+)
+
+endif()

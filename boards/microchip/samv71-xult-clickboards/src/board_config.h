@@ -55,50 +55,38 @@
 
 /* GPIOs ***********************************************************************************/
 
-/* LEDs - SAMV71-XULT has two LEDs:
- *   PA23 - Yellow LED0
- *   PC9  - Yellow LED1
+/* LEDs — Custom FC Board (active LOW: drive LOW = LED ON)
+ *   PC17 - LED1 (Blue/Status)
+ *   PA0  - LED2 (Amber/Activity)
+ *   PD10 - LED3 (Red/Error)
  */
-
-#define GPIO_nLED_BLUE       /* PA23 */  (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN23)
-
-/* Only one LED available on SAMV71-XULT - PA23 (Blue LED)
- * Driver will use drv_board_led.h defaults:
- * LED_BLUE=0, LED_AMBER=1, LED_RED=1, LED_GREEN=3
- * Board only implements LED_BLUE (index 0)
- */
+#define GPIO_nLED_BLUE       /* PC17 */ (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOC|GPIO_PIN17)
+#define GPIO_nLED_AMBER      /* PA0  */ (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN0)
+#define GPIO_nLED_RED        /* PD10 */ (GPIO_OUTPUT|GPIO_CFG_PULLUP|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN10)
 
 #define BOARD_HAS_CONTROL_STATUS_LEDS      1
 #define BOARD_ARMED_STATE_LED  LED_BLUE
 
-/* ICM45686 on EXT2 header (replaces ICM20689 — PD25 freed for GPS UART2)
- * EXT2 Pin 15 = CS  = PD27
- * EXT2 Pin 9  = IRQ = PD28 (DRDY)
- */
-#define GPIO_SPI0_CS_ICM45686    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN27)
-#define GPIO_SPI0_DRDY_ICM45686  (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_INT_FALLING|GPIO_PORT_PIOD|GPIO_PIN28)
-#define GPIO_SPI0_DRDY_ICM45686_IRQ  SAM_IRQ_PD28
+/* SPI0 — IMU1 (ICM-45686): PD20(MISO), PD21(MOSI), PD22(SCK), PD12(CS) */
+#define GPIO_SPI0_CS_ICM45686   (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN12)
 
-/* BMP388 — SPI CS removed (PD27 now used by ICM45686). BMP388 runs via I2C. */
+/* SPI1 — IMU2: PC26(MISO), PC27(MOSI), PC24(SCK), PC25(CS) */
+#define GPIO_SPI1_CS_IMU2       (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOC|GPIO_PIN25)
 
-/* mikroBUS Socket RST pins - Active LOW, start HIGH to release reset
- * Socket 1: PA19 (RST), PA0 (INT)
- * Socket 2: PB0 (RST) - NOT AVAILABLE: PB0 used for PWMC Motor 4
- * EXT1 adapter: PA5 (RST) - for Xplained Pro extension reset line (EXT1 pin 10)
- * EXT2 adapter: PA24 (RST) - for Xplained Pro extension reset line (EXT2 pin 10)
- * Compass 4 Click (AK09915) requires RST pin HIGH to operate
- *
- * NOTE: GPIO_MB2_RST (PB0) removed - pin now used for PWMC0 CH0 (Motor 4)
- */
-#define GPIO_MB1_RST     (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN19)
-/* GPIO_MB2_RST (PB0) REMOVED - used for PWMC Motor 4 */
-#define GPIO_EXT2_RST    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOA|GPIO_PIN24)
+/* IMU Interrupt Pins */
+#define GPIO_IMU1_DRDY    (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOC|GPIO_PIN2)   /* PC2 */
+#define GPIO_IMU2_DRDY    (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOC|GPIO_PIN3)   /* PC3 */
 
-/* Primary storage defaults to SD card. Enable BOARD_HAS_FRAM_CLICK (and re-add
- * FLASH_BASED_PARAMS) only when a FRAM Click board or other flash backend is
- * present.
- */
-// #define FLASH_BASED_PARAMS
+/* CAN0 Standby Control — PA29 (active LOW: LOW = transceiver active) */
+#define GPIO_CAN0_STB     (GPIO_OUTPUT|GPIO_OUTPUT_CLEAR|GPIO_PORT_PIOA|GPIO_PIN29)
+
+/* Power Control GPIOs */
+#define GPIO_3V3_EN_PERIPH    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOB|GPIO_PIN13)   /* PB13 */
+#define GPIO_5V_EN_PERIPH     (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOE|GPIO_PIN1)    /* PE1  */
+#define GPIO_nFLT_5V_PERIPH   (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOE|GPIO_PIN2)    /* PE2  */
+#define GPIO_nFLT_5V_TELE     (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOB|GPIO_PIN5)    /* PB5  */
+#define GPIO_EN_5V_TELE       (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN29)   /* PD29 */
+#define GPIO_EN_CRYPTO_RST    (GPIO_OUTPUT|GPIO_OUTPUT_SET|GPIO_PORT_PIOD|GPIO_PIN24)   /* PD24 */
 
 /* ADC Configuration ***********************************************************************************/
 
@@ -132,71 +120,44 @@
 
 /* Safety Button and LED Configuration *************************************************************/
 
-/* Safety Button: SW0 (PA9) - ACTIVE LOW (pressed = GND)
- * SafetyButton driver expects active-HIGH, so we define BOARD_SAFETY_BUTTON_ACTIVE_LOW
- * to signal that the driver should invert the read.
- */
-#define GPIO_BTN_SAFETY       (GPIO_INPUT | GPIO_CFG_PULLUP | GPIO_PORT_PIOA | GPIO_PIN9)
-#define BOARD_SAFETY_BUTTON_ACTIVE_LOW  1  /* Required: driver must invert read */
+/* Safety Button: PE4 (GPS_SAFETY_SW) - ACTIVE LOW (pressed = GND) */
+#define GPIO_BTN_SAFETY       (GPIO_INPUT|GPIO_CFG_PULLUP|GPIO_PORT_PIOE|GPIO_PIN4)
+#define BOARD_SAFETY_BUTTON_ACTIVE_LOW  1
 
-/* Safety LED: LED1 (PC9) - Active LOW (LED on when pin LOW) */
-#define GPIO_LED_SAFETY       (GPIO_OUTPUT | GPIO_CFG_DEFAULT | GPIO_OUTPUT_SET | GPIO_PORT_PIOC | GPIO_PIN9)
-
-/* Armed Status Output: PA20 - nARMED signal for external indication
- * Active LOW: LOW = armed, HIGH = not armed
- * _INIT version for initialization list, GPIO_nARMED for runtime
- */
-#define GPIO_nARMED_INIT      (GPIO_OUTPUT | GPIO_CFG_PULLUP | GPIO_OUTPUT_SET | GPIO_PORT_PIOA | GPIO_PIN20)
-#define GPIO_nARMED           (GPIO_OUTPUT | GPIO_CFG_DEFAULT | GPIO_OUTPUT_CLEAR | GPIO_PORT_PIOA | GPIO_PIN20)
-
-/* External lockout state macros (active low: LOW=armed, HIGH=not armed) */
-#define BOARD_INDICATE_EXTERNAL_LOCKOUT_STATE(enabled) \
-	px4_arch_gpiowrite(GPIO_nARMED, !(enabled))
-#define BOARD_GET_EXTERNAL_LOCKOUT_STATE() \
-	(!px4_arch_gpioread(GPIO_nARMED))
+/* Safety LED: PE3 (GPS_SAFETY_SW_LED) - Active LOW */
+#define GPIO_LED_SAFETY       (GPIO_OUTPUT|GPIO_CFG_DEFAULT|GPIO_OUTPUT_SET|GPIO_PORT_PIOE|GPIO_PIN3)
 
 /* I2C Buses ***********************************************************************************/
 
-/* SAMV71-XULT I2C Configuration:
- * I2C0 (TWIHS0): All sensors on mikroBUS sockets and Arduino headers
- *   PA3 - TWD0 (SDA)
- *   PA4 - TWCK0 (SCL)
+/* I2C0 (TWIHS0): PA3(SDA), PA4(SCL) — BMP388, BMM150, EEPROM
+ * I2C2 (TWIHS2): PD27(SDA), PD28(SCL) — GPS, Power Sensor
  */
-
-#define PX4_NUMBER_I2C_BUSES 1
-#define BOARD_NUMBER_I2C_BUSES 1
+#define PX4_NUMBER_I2C_BUSES 2
+#define BOARD_NUMBER_I2C_BUSES 2
 
 /* PWM Configuration ***********************************************************************************/
 
-/* SAMV71-XULT PWM Configuration using PWMC (PWM Controller):
- * PWM0 Module provides 4 independent channels for motor control.
+/* SAMV71-XULT PWM Configuration — 8 channels: 4 PWMC + 4 TC.
  *
- * Motor Pin Mapping:
- *   Motor 1 (CH0): PB0  - GPIO_PWMC0_H0 (Peripheral A) - EXT1 Pin 13
- *   Motor 2 (CH1): PA2  - GPIO_PWMC0_H1 (Peripheral A) - EXT2 Pin 9
- *   Motor 3 (CH2): PC19 - GPIO_PWMC0_H2 (Peripheral B) - EXT2 Pin 7
- *   Motor 4 (CH3): PC13 - GPIO_PWMC0_H3 (Peripheral B) - EXT2 Pin 4
+ * PWMC channels (PWM0, MCK/8 = 18.75MHz, 400Hz → CPRD=46875):
+ *   ch1: PB0  - PWMC0 CH0 (Peripheral A)
+ *   ch2: PA2  - PWMC0 CH1 (Peripheral A)
+ *   ch3: PC19 - PWMC0 CH2 (Peripheral B)
+ *   ch4: PC13 - PWMC0 CH3 (Peripheral B)
  *
- * CRITICAL: PA7 was originally used for Motor 1 but conflicts with XIN32
- *           (32.768 kHz slow crystal) when BOARD_HAVE_SLOWXTAL=1. Moved to PC13.
+ * TC channels (MCK/8 = 18.75MHz, 400Hz → RC=46875):
+ *   ch5: PA15 - TC0 CH1 TIOA (Timer1)
+ *   ch6: PC23 - TC1 CH0 TIOA (Timer3)
+ *   ch7: PC29 - TC1 CH2 TIOA (Timer5)
+ *   ch8: PC5  - TC2 CH0 TIOA (Timer6)
  *
- * Clock Configuration:
- *   MCK = 150MHz, CPRE = 3 (MCK/8 = 18.75MHz)
- *   For 400Hz PWM: CPRD = 46875
- *   LIMITATION: Minimum frequency ~286 Hz (16-bit CPRD overflow at lower rates)
- *
- * NOTE: PB0 (Motor 4) was previously GPIO_MB2_RST. Also conflicts with UART0_TXD.
- *       PA9 (Safety Button) conflicts with UART0_RXD when UART0 is enabled.
- *
- * Timer/Counter usage (separate from PWMC):
- *   TC0 CH0 (TC0) - Reserved for HRT (high-resolution timer)
- *   TC1 CH2 (TC5) - Reserved for RC Input capture: PC29 (TIOA5)
+ * NOTE: TC0 CH0 reserved for HRT. PC29 freed from RC Input for ch7 PWM.
  */
 
-#define DIRECT_PWM_OUTPUT_CHANNELS  4
+#define DIRECT_PWM_OUTPUT_CHANNELS  8
 
-/* RC Input capture - TC5 (TC1 CH2) - Reserved for future use */
-#define GPIO_RC_INPUT    (GPIO_PERIPHB | GPIO_CFG_DEFAULT | GPIO_PORT_PIOC | GPIO_PIN29)  /* TC5 TIOA - PC29 */
+/* PC29 (TC5 TIOA) is now used for Motor 3 PWM output - RC input disabled */
+/* #define GPIO_RC_INPUT    (GPIO_PERIPHB | GPIO_CFG_DEFAULT | GPIO_PORT_PIOC | GPIO_PIN29) */
 
 /* High-resolution timer */
 #define HRT_TIMER               0  /* use TC0 channel 0 for the HRT */
@@ -236,8 +197,12 @@
 #ifdef CONFIG_SAMV7_HSMCI0
 #  define HSMCI0_SLOTNO      0
 #  define HSMCI0_MINOR       0
-  /* Card Detect DISABLED: PD18 conflicts with UART4 (RC SBUS input).
-   * Pass cdcfg=0, cdirq=0 to sam_hsmci_initialize() — card always present.
+  /* Card Detect: PD18 disabled — pin used for USART2 RTS (Telemetry 1).
+   * SD card assumed always present (init.c passes 0,0 for CD).
+   */
+  /* #define GPIO_HSMCI0_CD  (GPIO_INPUT | GPIO_CFG_DEFAULT | GPIO_CFG_DEGLITCH | \
+   *                          GPIO_INT_BOTHEDGES | GPIO_PORT_PIOD | GPIO_PIN18)
+   * #define IRQ_HSMCI0_CD   SAM_IRQ_PD18
    */
 #endif
 
@@ -251,53 +216,41 @@
 /* This board provides the board_on_reset interface */
 #define BOARD_HAS_ON_RESET 1
 
-/* Hardfault crash dump — PROGMEM (internal flash reserved sectors)
- * SAMV7 internal flash: 2MB at 0x00400000, sectors are 128KB each.
- * CONFIG_SAMV7_PROGMEM_NSECTORS=2 reserves the last 256KB (0x005C0000-0x005FFFFF)
- * for crash dumps via the NuttX progmem driver.
- */
-#define PROGMEM_DUMP_BASE         0x005C0000u  /* Start of reserved progmem region */
-#define PROGMEM_DUMP_SIZE         (256 * 1024) /* 2 sectors x 128KB = 256KB */
-#define PROGMEM_DUMP_ALIGNMENT    128          /* Header alignment (bytes) */
-#define PROGMEM_DUMP_HEADER_PAD   108          /* Padding: ALIGNMENT - sizeof(fixed fields) = 128 - 20 */
-#define PROGMEM_DUMP_ERASE_VALUE  0xFF         /* Erased flash byte value */
-#define PROGMEM_DUMP_STACK_SIZE   6656         /* Max bytes for user+interrupt stack capture */
-
-/* When HAS_PROGMEM is enabled, hardfault_log.h defines HARDFAULT_ULOG_PATH
- * as a progmem device path. When disabled, log_writer_file.cpp still needs
- * this define (guarded by defined(px4_savepanic)). Provide SD fallback.
- */
-#ifndef HARDFAULT_ULOG_PATH
+/* Hardfault log path for crash dumps - stored in flash */
 #define HARDFAULT_ULOG_PATH "/fs/microsd"
-#define HARDFAULT_MAX_ULOG_FILE_LEN 80
-#endif
-
-/* Reboot counter — the PROGMEM file scheme (files 0-3) has no dedicated
- * reboot counter slot (unlike BBSRAM which has file 0 for that purpose).
- * Store on SD card. If SD isn't mounted during early boot, the open fails
- * gracefully and reboot-loop detection is skipped (crash dump still works).
- */
-#define HARDFAULT_REBOOT_PATH     "/fs/microsd/.hardfault_reboot_count"
+#define HARDFAULT_MAX_ULOG_FILE_LEN 80  /* Maximum length for ULog filename */
 
 #define PX4_GPIO_INIT_LIST { \
 		GPIO_nLED_BLUE,           \
+		GPIO_nLED_AMBER,          \
+		GPIO_nLED_RED,            \
 		GPIO_SPI0_CS_ICM45686,    \
-		GPIO_SPI0_DRDY_ICM45686,  \
-		GPIO_MB1_RST,             \
-		GPIO_EXT2_RST,            \
+		GPIO_SPI1_CS_IMU2,        \
+		GPIO_IMU1_DRDY,           \
+		GPIO_IMU2_DRDY,           \
 		GPIO_BTN_SAFETY,          \
 		GPIO_LED_SAFETY,          \
-		GPIO_nARMED_INIT,         \
+		GPIO_CAN0_STB,            \
+		GPIO_3V3_EN_PERIPH,       \
+		GPIO_5V_EN_PERIPH,        \
+		GPIO_nFLT_5V_PERIPH,      \
+		GPIO_nFLT_5V_TELE,        \
+		GPIO_EN_5V_TELE,          \
+		GPIO_EN_CRYPTO_RST,       \
 	}
 
 // Console buffer - ENABLED: lazy initialization implemented in console_buffer.cpp
 // (ensure_initialized() with double-checked locking avoids static init issues)
 #define BOARD_ENABLE_CONSOLE_BUFFER
 
-/* Number of IO timers used for PWM (PWMC modules)
- * Using PWM0 only - provides 4 channels (CH0-CH3)
+/* Number of IO timers used for PWM (1 PWMC + 4 TC = 5 timers, 8 channels)
+ * index 0: PWM0 (PWMC)      — ch1..4: PB0, PA2, PC19, PC13
+ * index 1: TC0 CH1 (Timer1) — ch5: PA15
+ * index 2: TC1 CH0 (Timer3) — ch6: PC23
+ * index 3: TC1 CH2 (Timer5) — ch7: PC29
+ * index 4: TC2 CH0 (Timer6) — ch8: PC5
  */
-#define BOARD_NUM_IO_TIMERS 1
+#define BOARD_NUM_IO_TIMERS 5
 
 __BEGIN_DECLS
 

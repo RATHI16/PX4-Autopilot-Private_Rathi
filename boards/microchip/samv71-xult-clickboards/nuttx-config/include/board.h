@@ -54,19 +54,17 @@
 
 /* Main oscillator register settings.
  *
- * The main oscillator could be either the embedded 4/8/12 MHz fast RC
- * oscillators or an external 3-20 MHz crystal or ceramic resonator.
- * The external clock source is selected by default in sam_clockconfig.c.
- * Here we need to specify the main oscillator start-up time.
- *
- * REVISIT... this is old information:
- * The start up time should be should be:
- *
- *   Start Up Time = 8 * MOSCXTST / SLCK = 56 Slow Clock Cycles.
+ * Using external MEMS oscillator DSC6011JI2B-012.0000 (12 MHz, CMOS output).
+ * MOSCXTBY (bypass mode) required — the oscillator drives XIN directly,
+ * internal crystal amplifier must be disabled.
+ * MOSCXTST is ignored in bypass mode but kept for reference.
  */
 
 #define BOARD_CKGR_MOR_MOSCXTST    (62 << PMC_CKGR_MOR_MOSCXTST_SHIFT) /* Start-up Time */
-#define BOARD_CKGR_MOR_MOSCXTENBY  (PMC_CKGR_MOR_MOSCXTEN)             /* Crystal Oscillator Enable */
+#define BOARD_CKGR_MOR_MOSCXTENBY  (PMC_CKGR_MOR_MOSCXTBY)  /* DSC6011JI2B 12MHz MEMS: bypass only, MOSCXTEN must be 0 */
+
+/* UART1 TX pin - NuttX requires TXD defined when UART1 is enabled (RC uses RX only) */
+#define GPIO_UART1_TXD  GPIO_UART1_TXD_3  /* PA6 */
 
 /* PLLA configuration.
  *

@@ -49,42 +49,19 @@ ver all
 
 #
 # Try to mount the microSD card.
+# Note: board_app_initialize (init.c) may have already mounted it.
 #
-if [ -b "/dev/mmcsd0" ]
+if mount | grep -q "/fs/microsd"
+then
+	echo "INFO [init] SD card already mounted by board init"
+	set STORAGE_AVAILABLE yes
+elif [ -b "/dev/mmcsd0" ]
 then
 	if mount -t vfat /dev/mmcsd0 /fs/microsd
 	then
-		if [ -f "/fs/microsd/.format" ]
-		then
-			echo "INFO [init] format /dev/mmcsd0 requested (/fs/microsd/.format)"
-			set SDCARD_FORMAT yes
-			rm /fs/microsd/.format
-			umount /fs/microsd
-
-		else
-			set STORAGE_AVAILABLE yes
-		fi
-	fi
-
-	if [ $STORAGE_AVAILABLE = no -o $SDCARD_FORMAT = yes ]
-	then
-		echo "INFO [init] formatting /dev/mmcsd0"
-		set STARTUP_TUNE 15 # tune 15 = SD_ERROR (overridden to SD_INIT if format + mount succeeds)
-
-		if mkfatfs -F 32 /dev/mmcsd0
-		then
-			echo "INFO [init] card formatted"
-
-			if mount -t vfat /dev/mmcsd0 /fs/microsd
-			then
-				set STORAGE_AVAILABLE yes
-				set STARTUP_TUNE 14 # tune 14 = SD_INIT
-			else
-				echo "ERROR [init] card mount failed"
-			fi
-		else
-			echo "ERROR [init] format failed"
-		fi
+		set STORAGE_AVAILABLE yes
+	else
+		echo "WARN [init] SD card mount failed - skipping format"
 	fi
 else
 	# Is there a device mounted for storage

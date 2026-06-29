@@ -1,59 +1,26 @@
 #!/bin/sh
 #
-# SAMV71-XULT with Click sensor boards - sensors init
+# Custom FC Board - sensors init
 #------------------------------------------------------------------------------
 # Active sensors:
-#   - MIKROE-6514: 6DOF IMU 27 Click (ICM-45686) - SPI0, CS=PD27
-#   - MIKROE-2935: GeoMagnetic Click (BMM150) - I2C0, addr 0x10
-#   - MIKROE-3566: Pressure 5 Click (BMP388) - I2C0
+#   - ICM-45686 IMU2 - SPI1 (PC26/PC27/PC24, CS=PC25) via J11
+#   - BMM150 Magnetometer - I2C bus 1 (TWIHS0: PA3/PA4), addr 0x10
+#   - BMP388 Barometer - I2C bus 1 (TWIHS0: PA3/PA4), addr 0x77
 #------------------------------------------------------------------------------
 
-# ADC - Battery voltage/current monitoring (AFEC0)
-board_adc start
+# Wait for SPI bus to be ready
+sleep 1
 
-#
-# SPI IMU Sensors (on SPI0)
-#
+# ICM-45686 IMU2 (accel + gyro) - SPI bus 2 (SPI1)
+if ! icm45686 -s -b 2 start
+then
+    # Retry after additional delay
+    sleep 1
+    icm45686 -s -b 2 start
+fi
 
-# ICM-45686 IMU - 6DOF IMU 27 Click (MIKROE-6514)
-# SPI bus 1 (PX4 numbering), CS=PD27, DRDY=PD28
-icm45686 start -s
+# BMM150 Magnetometer - I2C bus 1 (TWIHS0), address 0x10
+bmm150 -X -b 1 start
 
-#
-# I2C Sensors (on I2C0 / TWIHS0)
-#
-
-# AK09916 Magnetometer - Compass 4 Click (MIKROE-4231)
-# I2C address 0x0C (AK09916 driver compatible with AK09915)
-ak09916 start -X -b 1
-
-# DPS310 Barometer - Pressure 3 Click (MIKROE-2293)
-# I2C address 0x77
-dps310 start -X -b 1
-
-# BMP388 Barometer - now via I2C (PD27 CS freed for ICM45686)
-bmp388 start -X -b 1
-
-# BMM150 Magnetometer - GeoMagnetic Click (MIKROE-2935)
-# I2C address 0x10 (or 0x11/0x12/0x13 depending on CSB/SDO pins)
-bmm150 start -X -b 1
-
-#
-# 13DOF Click (MIKROE-3775) - I2C only
-# Contains: BMI088 (accel+gyro) + BMM150 (mag) + BME680 (environmental)
-# Note: BME680 is environmental sensor, not used by PX4
-#
-
-# BMI088 IMU from 13DOF Click
-# I2C addresses: Accel=0x18/0x19, Gyro=0x68/0x69
-# -X = External I2C bus (matches i2c.cpp initI2CBusExternal)
-bmi088_i2c start -A -X -b 1
-bmi088_i2c start -G -X -b 1
-
-# BMM150 Magnetometer from 13DOF Click (same as GeoMagnetic Click)
-# Already covered above if enabled
-
-#------------------------------------------------------------------------------
-# Note: Sensors will report "no device on bus" if Click board not connected.
-# This is expected behavior - only uncomment sensors for boards you have.
-#------------------------------------------------------------------------------
+# BMP388 Barometer - I2C bus 1 (TWIHS0), address 0x77 (SDO=VCC)
+bmp388 -X -b 1 -a 119 start

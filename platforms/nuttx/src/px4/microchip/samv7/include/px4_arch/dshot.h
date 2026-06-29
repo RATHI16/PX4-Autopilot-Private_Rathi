@@ -43,12 +43,13 @@
  * instead of STM32-style TIM DMA burst. XDMAC writes duty values
  * to the DMAR register; hardware distributes to synchronized channels.
  *
- * XDMAC hardware request IDs (from SAMV71 datasheet Table 47-1):
- *   PWM0 TX: XDMAC channel 13
- *   PWM1 TX: XDMAC channel 39
+ * NuttX sam_dmachannel() expects the peripheral PID (not raw XDMAC
+ * request number). The driver internally maps PID → XDMAC request:
+ *   PWM0: SAM_PID_PWM0 (31) → XDMACH_PWM0_TX (13)
+ *   PWM1: SAM_PID_PWM1 (60) → XDMACH_PWM1_TX (39)
  */
 typedef struct dshot_conf_t {
-	uint8_t  xdmac_ch_tx;      /* XDMAC channel for PWM TX (13=PWM0, 39=PWM1) */
+	uint8_t  xdmac_ch_tx;      /* NuttX PID for DMA lookup (31=PWM0, 60=PWM1) */
 	uint8_t  xdmac_ch_rx[4];   /* Reserved for bidirectional DShot capture */
 	uint32_t tc_capture_base;   /* Reserved for bidirectional TC capture base */
 } dshot_conf_t;

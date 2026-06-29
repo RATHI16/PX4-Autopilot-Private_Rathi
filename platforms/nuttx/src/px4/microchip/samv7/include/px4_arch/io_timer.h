@@ -117,6 +117,7 @@ typedef struct timer_io_channels_t {
 	uint8_t   timer_channel;  /* PWMC channel number (0-3) */
 	uint16_t  masks;          /* Channel bit in SR/ISR registers (1 << timer_channel) */
 	uint8_t   ccr_offset;     /* Offset to CDTY register from channel base */
+  uint8_t   is_tc;          /* 0 = PWMC, 1 = TC */
 } timer_io_channels_t;
 
 /* Channel handler callback — matches STM32 signature */
@@ -168,7 +169,12 @@ __EXPORT uint32_t io_timer_channel_get_as_pwm_input(unsigned channel);
 __EXPORT void io_timer_trigger(unsigned channels_mask);
 
 /* DShot support */
+__EXPORT void io_timer_set_dshot_channel_mask(uint8_t timer, uint32_t mask);
+__EXPORT void io_timer_dshot_force_low(uint8_t timer);
+__EXPORT bool io_timer_dshot_check_unre(uint8_t timer);
 __EXPORT void io_timer_update_dma_req(uint8_t timer, bool enable);
 __EXPORT int io_timer_set_dshot_mode(uint8_t timer, unsigned dshot_pwm_freq);
+__EXPORT int io_timer_dshot_debug_pwm(uint8_t timer, unsigned rate_hz, unsigned duty_percent);
+__EXPORT void io_timer_dshot_debug_dump(uint8_t timer);
 
 __END_DECLS
