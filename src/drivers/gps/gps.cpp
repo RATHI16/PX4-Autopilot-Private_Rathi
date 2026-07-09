@@ -1010,6 +1010,21 @@ GPS::run()
 				receive_timeout += TIMEOUT_DUMP_ADD;
 			}
 
+			// First receive after configuration needs a longer timeout —
+			// NEO-M9N may internally restart after GNSS reconfiguration
+			unsigned initial_timeout = receive_timeout + 2000;
+
+			if ((helper_ret = _helper->receive(initial_timeout)) > 0 && !should_exit()) {
+				if (helper_ret & 1) {
+					publish();
+					last_rate_count++;
+				}
+
+				if (_p_report_sat_info && (helper_ret & 2)) {
+					publishSatelliteInfo();
+				}
+			}
+
 			while ((helper_ret = _helper->receive(receive_timeout)) > 0 && !should_exit()) {
 
 				if (helper_ret & 1) {

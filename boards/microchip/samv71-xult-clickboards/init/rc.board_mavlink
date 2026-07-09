@@ -19,9 +19,7 @@ mavlink start -d /dev/ttyS4 -b 57600 -m config -r 2880 -x -f
 echo "Starting MAVLink TEL2 on /dev/ttyS1"
 mavlink start -d /dev/ttyS1 -b 57600 -m config -r 2880 -x -f
 
-# GPS — UART2 (PD25/PD26) on ttyS3
-echo "Starting Main GPS on /dev/ttyS3"
-gps start -d /dev/ttyS3 -b 115200
+# GPS — started automatically by rc.serial via GPS_1_CONFIG=201 on /dev/ttyS3
 
 # RC Input — UART1 (PA5) on ttyS2
 echo "Starting RC Input Driver on /dev/ttyS2"
