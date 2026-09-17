@@ -33,13 +33,13 @@
  ****************************************************************************/
 
 /* Linker script for ATSAMV71Q21B (Cortex-M7):
- *   - 2048 KB Flash at 0x00400000
+ *   - App region: 1920 KB Flash at 0x00420000 (first 128 KB reserved for bootloader)
  *   - 384 KB SRAM at 0x20400000
  */
 
 MEMORY
 {
-  flash (rx)  : ORIGIN = 0x00400000, LENGTH = 2048K
+  flash (rx)  : ORIGIN = 0x00420000, LENGTH = 1920K
   sram (rwx)  : ORIGIN = 0x20400000, LENGTH = 320K
   nocache (rwx) : ORIGIN = 0x20450000, LENGTH = 64K
 }

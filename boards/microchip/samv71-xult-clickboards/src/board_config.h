@@ -127,6 +127,22 @@
 /* Safety LED: PE3 (GPS_SAFETY_SW_LED) - Active LOW */
 #define GPIO_LED_SAFETY       (GPIO_OUTPUT|GPIO_CFG_DEFAULT|GPIO_OUTPUT_SET|GPIO_PORT_PIOE|GPIO_PIN3)
 
+/* Tone Alarm / GPS buzzer: PB1 (GPS_BUZZER) - active buzzer via low-side MOSFET, idle LOW (off) */
+#define GPIO_TONE_ALARM_IDLE  (GPIO_OUTPUT|GPIO_CFG_DEFAULT|GPIO_OUTPUT_CLEAR|GPIO_PORT_PIOB|GPIO_PIN1)
+#define GPIO_TONE_ALARM_GPIO  (GPIO_OUTPUT|GPIO_CFG_DEFAULT|GPIO_OUTPUT_CLEAR|GPIO_PORT_PIOB|GPIO_PIN1)
+
+/* IMU Heater: PE5 (PE5_HEATR_SNS) - drives Q1 (BSS138) low-side gate through
+ * R9(100R)/R10(100k pulldown); Q1 switches R7+R8 (20R, ~0.5W) resistive heater
+ * from VCC_3V3. Idle LOW = heater OFF (pulldown keeps it off before init too). */
+#define GPIO_HEATER           (GPIO_OUTPUT|GPIO_CFG_DEFAULT|GPIO_OUTPUT_CLEAR|GPIO_PORT_PIOE|GPIO_PIN5)
+
+/* Closed-loop heater driver (src/drivers/heater) hooks — GPIO mode. Same PE5 pin
+ * as GPIO_HEATER above; the driver requires these two names (it #errors without
+ * GPIO_HEATER_OUTPUT). Do not run 'heater' and 'heater_test' at the same time —
+ * they drive the same physical pin. */
+#define GPIO_HEATER_OUTPUT        GPIO_HEATER
+#define HEATER_OUTPUT_EN(on_true) px4_arch_gpiowrite(GPIO_HEATER_OUTPUT, (on_true))
+
 /* I2C Buses ***********************************************************************************/
 
 /* I2C0 (TWIHS0): PA3(SDA), PA4(SCL) — BMP388, BMM150, EEPROM
@@ -229,6 +245,8 @@
 		GPIO_IMU2_DRDY,           \
 		GPIO_BTN_SAFETY,          \
 		GPIO_LED_SAFETY,          \
+		GPIO_TONE_ALARM_IDLE,     \
+		GPIO_HEATER,              \
 		GPIO_CAN0_STB,            \
 		GPIO_3V3_EN_PERIPH,       \
 		GPIO_5V_EN_PERIPH,        \

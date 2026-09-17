@@ -6,6 +6,7 @@
 #include "sam_twihs.h"
 #include <uORB/Publication.hpp>
 #include <uORB/topics/battery_status.h>
+#include <battery/battery.h>
 #include <drivers/drv_hrt.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -58,17 +59,20 @@ static int pac1711_thread_main(int argc, char *argv[])
 {
 	PX4_INFO("pac1711: thread started");
 
-	g_pac1711_i2c = px4_i2cbus_initialize(2);
-
+	/* I2C bus is pre-initialized by the probe in pac1711_main start; skip re-init. */
 	if (g_pac1711_i2c == nullptr) {
-		PX4_WARN("pac1711: px4_i2cbus_initialize(2) failed, trying sam_i2cbus_initialize(2)");
-		g_pac1711_i2c = sam_i2cbus_initialize(2);
-	}
+		g_pac1711_i2c = px4_i2cbus_initialize(2);
 
-	if (g_pac1711_i2c == nullptr) {
-		PX4_ERR("pac1711: failed to open I2C bus");
-		g_pac1711_running = false;
-		return -1;
+		if (g_pac1711_i2c == nullptr) {
+			PX4_WARN("pac1711: px4_i2cbus_initialize(2) failed, trying sam_i2cbus_initialize(2)");
+			g_pac1711_i2c = sam_i2cbus_initialize(2);
+		}
+
+		if (g_pac1711_i2c == nullptr) {
+			PX4_ERR("pac1711: failed to open I2C bus");
+			g_pac1711_running = false;
+			return -1;
+		}
 	}
 
 	PX4_INFO("pac1711: I2C bus opened");
@@ -77,7 +81,7 @@ static int pac1711_thread_main(int argc, char *argv[])
 	pac1711_i2c_send_byte(g_pac1711_i2c, PAC1711_BASEADDR, PAC1711_REG_REFRESH);
 	px4_usleep(100000);
 
-	/* Verify chip */
+	/* Log chip IDs */
 	uint16_t product_id = 0, mfg_id = 0;
 	pac1711_i2c_read_reg16(g_pac1711_i2c, PAC1711_BASEADDR, PAC1711_REG_PRODUCT_ID, &product_id);
 	pac1711_i2c_read_reg16(g_pac1711_i2c, PAC1711_BASEADDR, PAC1711_REG_MFG_ID, &mfg_id);
@@ -89,8 +93,13 @@ static int pac1711_thread_main(int argc, char *argv[])
 	float v = (float)vbus_raw / 65536.0f * PAC1711_VBUS_FSR_V;
 	PX4_INFO("pac1711: VBUS=0x%04x (%.2fV)", vbus_raw, (double)v);
 
-	/* Main loop */
-	uORB::Publication<battery_status_s> battery_pub{ORB_ID(battery_status)};
+	/* Main loop.
+	 * Use PX4's Battery lib (same as the INA228 path) so battery_status is fully
+	 * populated: state-of-charge / remaining, cell_count, id, warnings, etc.
+	 * are derived from the BAT1_* params. Without this the publish is minimal
+	 * (voltage/current only) and QGC shows 0% remaining. Sample interval 100000us
+	 * matches the 10 Hz loop below; index 1 matches BAT1_SOURCE=1. */
+	Battery battery{1, nullptr, 100000, battery_status_s::SOURCE_POWER_MODULE};
 
 	int loop_count = 0;
 	while (!g_pac1711_should_stop.load()) {
@@ -117,13 +126,10 @@ static int pac1711_thread_main(int argc, char *argv[])
 		}
 		loop_count++;
 
-		battery_status_s bat{};
-		bat.timestamp = hrt_absolute_time();
-		bat.voltage_v = g_voltage;
-		bat.current_a = g_current;
-		bat.connected = true;
-		bat.source = battery_status_s::SOURCE_POWER_MODULE;
-		battery_pub.publish(bat);
+		battery.setConnected(true);
+		battery.updateVoltage(g_voltage);
+		battery.updateCurrent(g_current);
+		battery.updateAndPublishBatteryStatus(hrt_absolute_time());
 
 		px4_usleep(100000);  /* 10 Hz */
 	}
@@ -152,6 +158,30 @@ extern "C" __EXPORT int pac1711_main(int argc, char *argv[])
 			PX4_WARN("pac1711: already running");
 			return 0;
 		}
+
+		/* Synchronous probe: open I2C and verify PRODUCT_ID (reg 0xFD).
+		 * On the real EV79R88A silicon this reads 0x80 (the earlier 0x57 was a
+		 * wrong assumption copied from a different Microchip part's datasheet).
+		 * This ensures 'pac1711 start' returns failure when a different chip is
+		 * at 0x41 so the rc script can fall back to the INA228/INA226. */
+		struct i2c_master_s *probe_i2c = px4_i2cbus_initialize(2);
+		if (probe_i2c == nullptr) { probe_i2c = sam_i2cbus_initialize(2); }
+		if (probe_i2c == nullptr) {
+			PX4_ERR("pac1711: cannot open I2C bus for probe");
+			return -1;
+		}
+		uint16_t probe_id = 0;
+		int probe_ret = pac1711_i2c_read_reg16(probe_i2c, PAC1711_BASEADDR,
+						       PAC1711_REG_PRODUCT_ID, &probe_id);
+		if (probe_ret != OK || (probe_id >> 8) != 0x80) {
+			PX4_WARN("pac1711: not detected at 0x41 (probe_ret=%d id=0x%04x)", probe_ret, probe_id);
+			px4_i2cbus_uninitialize(probe_i2c);
+			return -1;
+		}
+		/* Pass the open bus handle to the thread via the global; thread will skip re-init. */
+		g_pac1711_i2c = probe_i2c;
+		PX4_INFO("pac1711: detected (PRODUCT_ID=0x%02x)", probe_id >> 8);
+
 		g_pac1711_running = true;
 		g_pac1711_should_stop.store(false);
 

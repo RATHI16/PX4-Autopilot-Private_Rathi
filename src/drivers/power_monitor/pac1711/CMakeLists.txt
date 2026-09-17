@@ -4,4 +4,5 @@ px4_add_module(
 	SRCS
 		pac1711.cpp
 	DEPENDS
+		battery
 )

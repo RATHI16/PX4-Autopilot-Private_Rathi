@@ -18,6 +18,22 @@ CONFIG_DRIVERS_ADC_BOARD_ADC=y
 # Safety Button - PE4 with LED PE3
 CONFIG_DRIVERS_SAFETY_BUTTON=y
 
+# Tone Alarm - GPS buzzer on PB1 (active buzzer via low-side MOSFET)
+CONFIG_DRIVERS_TONE_ALARM=y
+
+# IMU Heater - closed-loop thermostat driving PE5 (Q1/BSS138 -> R7/R8 element).
+# Regulates the IMU die temperature to SENS_IMU_TEMP. Needs GPIO_HEATER_OUTPUT
+# + HEATER_OUTPUT_EN in board_config.h and SENS_TEMP_ID set to the accel device_id.
+CONFIG_DRIVERS_HEATER=y
+
+# RGB status LED on the M9N GPS module. i2cdetect on the GPS bus (I2C2)
+# shows the LED controller at 0x54 = IS31FL3195 (NOT an NCP5623C @ 0x38/0x39).
+# Auto-started by common rcS ("rgbled_is31fl3195 start -X -q"); commander
+# drives it green when the GPS has a stable 3D fix and the vehicle is ready.
+# NCP5623C kept enabled as a harmless fallback for other GPS modules.
+CONFIG_DRIVERS_LIGHTS_RGBLED_IS31FL3195=y
+CONFIG_DRIVERS_LIGHTS_RGBLED_NCP5623C=y
+
 # USB CDC/ACM
 CONFIG_DRIVERS_CDCACM_AUTOSTART=y
 
@@ -48,8 +64,14 @@ CONFIG_DRIVERS_GPS=y
 CONFIG_DRIVERS_RC_INPUT=y
 CONFIG_DRIVERS_RC=y
 
-# Power Monitor
+# Power Monitor - auto-detect PAC1711 (custom EV79R88A) or INA228 (Holybro PM02D @0x45).
+# PM02D CONFIRMED to use a TI INA228 (not INA226). All INA chips report the same
+# TI manufacturer ID, so the INA226 driver ACKs at 0x45 but then fails the die-ID
+# check and never initialises (publishes 0 V forever) — the INA228 driver is required.
+# INA228 default I2C address is already 0x45. INA226 kept as a harmless fallback.
 CONFIG_DRIVERS_POWER_MONITOR_PAC1711=y
+CONFIG_DRIVERS_POWER_MONITOR_INA228=y
+CONFIG_DRIVERS_POWER_MONITOR_INA226=y
 
 # Core Modules
 CONFIG_MODULES_BATTERY_STATUS=y

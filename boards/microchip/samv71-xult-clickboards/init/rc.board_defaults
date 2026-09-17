@@ -17,7 +17,7 @@ param set-default USB_MAV_MODE 2
 param set-default SYS_DM_BACKEND 0
 param set-default SYS_HAS_MAG 1
 param set-default SYS_HAS_BARO 1
-param set-default SYS_HAS_GPS 0
+param set-default SYS_HAS_GPS 1
 
 # ── MAVLink ───────────────────────────────────
 param set-default MAV_0_CONFIG 101
@@ -48,7 +48,9 @@ param set-default SENS_BOARD_ROT 0
 # ── EKF2 ──────────────────────────────────────
 param set-default EKF2_HGT_REF 1
 param set-default EKF2_BARO_CTRL 1
-param set-default EKF2_GPS_CTRL 0
+# GPS aiding ON (bitmask 7 = lon/lat + altitude + 3D velocity) so the EKF
+# produces a valid global position — this is what turns the M9N RGB LED green.
+param set-default EKF2_GPS_CTRL 7
 param set-default EKF2_MAG_TYPE 0
 param set-default EKF2_MAG_CHECK 0
 param set-default EKF2_DECL_TYPE 0
@@ -234,6 +236,43 @@ param set-default COM_RC_LOSS_T 2.0
 # ── GPS — UART2 (PD25 RX, PD26 TX) on ttyS3 ──
 param set-default GPS_1_CONFIG 201
 param set-default SER_GPS1_BAUD 115200
+
+# ── GPS module safety button + LED (PE4 switch / PE3 LED) ──
+# Drives the safety switch input and status LED on the GPS module,
+# matching the Pixhawk 6X behaviour. Buzzer (PB1) auto-starts via
+# 'tone_alarm start' in the common rcS.
+safety_button start
+
+# ── Power Monitor: auto-detect PAC1711 or INA226/PM02D (both I2C2 @ 0x41) ──
+# BAT1_SOURCE=1 (External) stops the analog ADC battery_status from starting,
+# so the I2C monitor is the sole battery publisher regardless of which chip is present.
+# pac1711 start now probes PRODUCT_ID (0x57) first and returns failure for any
+# other chip, so the ina226 fallback only activates when PM02D is connected.
+# -f flag on ina226 allows it to retry if the PM02D isn't powered at boot yet.
+param set-default BAT1_SOURCE 1
+if pac1711 start; then
+    echo "[power] PAC1711 (EV79R88A) started on I2C2"
+else
+    # Holybro PM02D = TI INA228 at 0x45 on PX4 bus 3 (TWIHS2/I2C2 — the GPS bus).
+    # NOTE: there is no PX4 bus 2 on this board (only buses 1 and 3), and the
+    # PM02D is an INA228, not an INA226. -k keeps the driver retrying until the
+    # main battery is plugged in.
+    if ina228 start -X -b 3 -a 0x45 -k -t 1; then
+        echo "[power] INA228/PM02D started on I2C2 @0x45"
+    else
+        echo "[power] no I2C power monitor found on bus 3"
+    fi
+fi
+
+# ── IMU Heater: closed-loop thermostat on PE5 ──
+# Holds the ICM45686 IMU die at SENS_IMU_TEMP (55C, the PX4 reference target).
+# SENS_TEMP_ID must match the accel device_id (3407890 = Type 0x34 on SPI2).
+# The heater only warms — it drives PE5 HIGH while the IMU is below 55C, idles
+# at the setpoint, and switches off once at/above it. Do NOT also run
+# 'heater_test' (manual PE5 toggle) — both drive the same pin.
+param set-default SENS_TEMP_ID 3407890
+param set-default SENS_IMU_TEMP 55
+heater start
 
 # ── Dataman ───────────────────────────────────
 dataman start -f /fs/mtd_waypoints

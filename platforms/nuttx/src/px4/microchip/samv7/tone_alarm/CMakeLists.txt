@@ -31,41 +31,6 @@
 #
 ############################################################################
 
-add_library(drivers_board
-	i2c.cpp
-	init.c
-	sam_mpuinit.c
-	led.c
-	qspi.c
-	sam_gpiosetevent.c
-	sam_hsmci.c
-	spi.cpp
-	timer_config.cpp
-	usb.c
+px4_add_library(arch_tone_alarm
+	ToneAlarmInterface.cpp
 )
-
-# PCK6 timer test command
-px4_add_module(
-	MODULE board_pck6_test
-	MAIN pck6_test
-	SRCS
-		pck6_timer_test.c
-)
-
-# IMU heater (PE5) bench validation command
-px4_add_module(
-	MODULE board_heater_test
-	MAIN heater_test
-	SRCS
-		heater_test.c
-)
-
-target_link_libraries(drivers_board
-	PRIVATE
-		arch_io_pins
-		drivers__led # drv_led_start
-		nuttx_arch
-		nuttx_drivers
-		px4_layer
-)
-
