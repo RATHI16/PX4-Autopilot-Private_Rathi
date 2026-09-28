@@ -100,7 +100,7 @@ param set-default PWM_MAIN_FAIL5 1000
 param set-default PWM_MAIN_FAIL6 1000
 param set-default PWM_MAIN_FAIL7 1000
 param set-default PWM_MAIN_FAIL8 1000
-param set-default PWM_MAIN_TIM0 -4
+param set-default PWM_MAIN_TIM0 400
 param set-default PWM_MAIN_TIM1 0
 param set-default PWM_MAIN_TIM2 0
 param set-default PWM_MAIN_TIM3 0
