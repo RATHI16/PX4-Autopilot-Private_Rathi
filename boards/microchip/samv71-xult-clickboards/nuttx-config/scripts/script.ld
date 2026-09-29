@@ -33,13 +33,16 @@
  ****************************************************************************/
 
 /* Linker script for ATSAMV71Q21B (Cortex-M7):
- *   - App region: 1920 KB Flash at 0x00420000 (first 128 KB reserved for bootloader)
+ *   - STANDALONE app (no bootloader): boots directly from flash base 0x00400000
+ *   - App region: full 2048 KB internal flash at 0x00400000
  *   - 384 KB SRAM at 0x20400000
+ *   NOTE: parameters live on the external QSPI SST26VF032BA chip
+ *   (/fs/mtd_params), NOT internal flash, so the app may use all 2 MB.
  */
 
 MEMORY
 {
-  flash (rx)  : ORIGIN = 0x00420000, LENGTH = 1920K
+  flash (rx)  : ORIGIN = 0x00400000, LENGTH = 2048K
   sram (rwx)  : ORIGIN = 0x20400000, LENGTH = 320K
   nocache (rwx) : ORIGIN = 0x20450000, LENGTH = 64K
 }

@@ -13,11 +13,11 @@ mavlink start -d /dev/ttyACM0 -b 57600 -r 57600 -x
 
 # Telemetry 1 — USART2 (PD15/PD16) on ttyS4
 echo "Starting MAVLink TEL1 on /dev/ttyS4"
-mavlink start -d /dev/ttyS4 -b 57600 -m config -r 2880 -x -f
+mavlink start -d /dev/ttyS4 -b 57600 -r 1000 -x -f
 
 # Telemetry 2 — UART0 (PA9/PA10) on ttyS1
 echo "Starting MAVLink TEL2 on /dev/ttyS1"
-mavlink start -d /dev/ttyS1 -b 57600 -m config -r 2880 -x -f
+mavlink start -d /dev/ttyS1 -b 57600 -r 1000 -x -f
 
 # GPS — started automatically by rc.serial via GPS_1_CONFIG=201 on /dev/ttyS3
 
