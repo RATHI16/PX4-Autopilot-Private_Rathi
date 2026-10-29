@@ -169,7 +169,8 @@ void WorkerThread::threadEntry()
 
 	case Request::ParamResetAll:
 		param_reset_all();
-		_ret_value = 0;
+		// save now (blocking): the non-blocking autosave can lose the lock and leave the old values stored
+		_ret_value = param_save_default(true);
 		break;
 
 	case Request::ParamResetSensorFactory: {
@@ -189,7 +190,7 @@ void WorkerThread::threadEntry()
 				"COM_FLIGHT_UUID"
 			};
 			param_reset_excludes(exclude_list, sizeof(exclude_list) / sizeof(exclude_list[0]));
-			_ret_value = 0;
+			_ret_value = param_save_default(true);
 			break;
 		}
 	}

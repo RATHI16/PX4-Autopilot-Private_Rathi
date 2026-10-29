@@ -16,7 +16,7 @@
 	branch = main
 [submodule "platforms/nuttx/NuttX/nuttx"]
 	path = platforms/nuttx/NuttX/nuttx
-	url = https://github.com/bhanuprakashjh/NuttX.git
+	url = https://github.com/RATHI16/NuttX.git
 	branch = px4_firmware_nuttx-samv7
 [submodule "platforms/nuttx/NuttX/apps"]
 	path = platforms/nuttx/NuttX/apps
