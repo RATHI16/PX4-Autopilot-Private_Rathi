@@ -812,7 +812,7 @@ const char *param_get_default_file()
 
 int param_set_backup_file(const char *filename)
 {
-	if (param_default_file && strcmp(filename, param_default_file) == 0) {
+	if (filename && param_default_file && strcmp(filename, param_default_file) == 0) {
 		PX4_ERR("backup file can't be the same as the default file %s", filename);
 		return PX4_ERROR;
 	}

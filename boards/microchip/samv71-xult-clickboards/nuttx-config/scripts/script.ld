@@ -44,7 +44,7 @@ MEMORY
 {
   flash (rx)  : ORIGIN = 0x00400000, LENGTH = 2048K
   sram (rwx)  : ORIGIN = 0x20400000, LENGTH = 320K
-  nocache (rwx) : ORIGIN = 0x20450000, LENGTH = 64K
+  nocache (rwx) : ORIGIN = 0x2045E000, LENGTH = 8K
 }
 
 OUTPUT_ARCH(arm)
